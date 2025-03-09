@@ -3,51 +3,54 @@ import uuid
 from ragas.testset.graph import KnowledgeGraph, Node, NodeType, Relationship
 
 
-def create_document_node(name=None, id=None):
-    """Helper function to create a document node with proper structure."""
-    if id is None:
-        id = uuid.uuid4()
+class DebugUUID(uuid.UUID):
+    """
+    A UUID subclass that displays a debug name instead of the UUID value.
+    Creates a more readable graph representation in logs/debuggers while maintaining UUID compatibility.
+    """
 
+    def __init__(self, debug_name):
+        # Create a random UUID internally
+        self.debug = debug_name
+        super().__init__(hex=str(uuid.uuid4()))
+
+    def __str__(self):
+        return self.debug
+
+    def __repr__(self):
+        return f"DebugUUID('{self.debug}')"
+
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, value)
+
+
+def create_document_node(name):
+    """Helper function to create a document node with proper structure."""
     return Node(
-        id=id,
+        id=DebugUUID(name),
         type=NodeType.DOCUMENT,
         properties={
-            "page_content": f"{name or 'document'} content",
-            "summary": f"{name or 'document'} summary",
+            "page_content": f"{name} content",
+            "summary": f"{name} summary",
             "document_metadata": {},
             "summary_embedding": [0.001, 0.002, 0.003],
-            "themes": (
-                [f"Theme {name}1", f"Theme {name}2"] if name else ["Theme 1", "Theme 2"]
-            ),
-            "entities": (
-                [f"Entity {name}1", f"Entity {name}2"]
-                if name
-                else ["Entity 1", "Entity 2"]
-            ),
+            "themes": [],
+            "entities": [],
         },
     )
 
 
-def create_chunk_node(name=None, id=None):
+def create_chunk_node(name):
     """Helper function to create a chunk node with proper structure."""
-    if id is None:
-        id = uuid.uuid4()
-
     return Node(
-        id=id,
+        id=DebugUUID(name),
         type=NodeType.CHUNK,
         properties={
-            "page_content": f"{name or 'chunk'} content",
-            "summary": f"{name or 'chunk'} summary",
+            "page_content": f"{name} content",
+            "summary": f"{name} summary",
             "summary_embedding": [0.001, 0.002, 0.003],
-            "themes": (
-                [f"Theme {name}1", f"Theme {name}2"] if name else ["Theme 1", "Theme 2"]
-            ),
-            "entities": (
-                [f"Entity {name}1", f"Entity {name}2"]
-                if name
-                else ["Entity 1", "Entity 2"]
-            ),
+            "themes": [],
+            "entities": [],
         },
     )
 
@@ -73,28 +76,27 @@ def create_chain_of_similarities(starting_node, node_count=5):
 
     # Use starting_node as the first node
     nodes.append(starting_node)
-    
+
     # Create remaining nodes
     for i in range(node_count - 1):
-        nodes.append(create_document_node(name=f"sim_node_{i+1}"))
+        nodes.append(create_document_node(name=f"sim_from_{starting_node.id}_{i + 1}"))
 
     # Create chain of cosine similarity relationships
     relationships = []
     for i in range(node_count - 1):
-        similarity_score = 0.8 + (i * 0.02)  # Vary the similarity score slightly
         rel = Relationship(
             source=nodes[i],
             target=nodes[i + 1],
             type="cosine_similarity",
             bidirectional=True,
-            properties={"summary_similarity": similarity_score},
+            properties={"summary_similarity": 0.9},
         )
         relationships.append(rel)
 
     return nodes, relationships
 
 
-def create_chain_of_overlaps(starting_node, node_count=5):
+def create_chain_of_overlap_nodes(starting_node, node_count=3):
     """
     Create a chain of nodes with entity overlap relationships.
 
@@ -112,49 +114,37 @@ def create_chain_of_overlaps(starting_node, node_count=5):
     """
     # Create nodes (mix of document and chunk nodes)
     nodes = []
-
-    # Use starting_node as the first node
-    nodes.append(starting_node)
-    
-    # Create remaining nodes, alternating between document and chunk
-    for i in range(node_count - 1):
-        if i % 2 == 0:
-            nodes.append(create_document_node(name=f"overlap_node_{i+1}"))
-        else:
-            nodes.append(create_chunk_node(name=f"overlap_node_{i+1}"))
-
-    # Create chain of entity overlap relationships
     relationships = []
+
+    # Use starting_node as the first node and set its entity
+    starting_node.properties["entities"] = [f"E_{starting_node.id}_1"]
+    nodes.append(starting_node)
+
+    # Create relationships and remaining node
+    prev_node = starting_node
     for i in range(node_count - 1):
-        overlap_score = 0.3 + (i * 0.05)  # Vary the overlap score slightly
+        # Realistic entity assignment
+        prev_entity = f"E_{starting_node.id}_{i+1}"
+        new_entity = f"E_{starting_node.id}_{i+2}"
 
-        # Create overlapped items based on node properties
-        source_node = nodes[i]
-        target_node = nodes[i + 1]
+        new_node = create_document_node(name=f"overlap_from_{starting_node.id}_{i + 1}")
 
-        source_entities = source_node.properties.get("entities", [])
-        target_entities = target_node.properties.get("entities", [])
-
-        # Create at least one overlapped item
-        overlapped_items = []
-        if source_entities and target_entities:
-            overlapped_items.append([source_entities[0], target_entities[0]])
-
-            # Add a second overlapped item if available
-            if len(source_entities) > 1 and len(target_entities) > 1:
-                overlapped_items.append([source_entities[1], target_entities[1]])
+        # Add entities to the new node, including overlap w/ previous node
+        new_node.properties["entities"] = [prev_entity, new_entity]
+        nodes.append(new_node)
 
         rel = Relationship(
-            source=source_node,
-            target=target_node,
+            source=prev_node,
+            target=new_node,
             type="entities_overlap",
             bidirectional=False,
             properties={
-                "entities_overlap_score": overlap_score,
-                "overlapped_items": overlapped_items,
+                "entities_overlap_score": 0.1,
+                "overlapped_items": [[prev_entity, prev_entity]],
             },
         )
         relationships.append(rel)
+        prev_node = new_node
 
     return nodes, relationships
 
@@ -170,11 +160,11 @@ def create_document_and_child_nodes():
     """
     # Create nodes - A is a document, the rest are chunks
     nodes = {
-        "A": create_document_node(name="A"),
-        "B": create_chunk_node(name="B"),
-        "C": create_chunk_node(name="C"),
-        "D": create_chunk_node(name="D"),
-        "E": create_chunk_node(name="E"),
+        "A": create_document_node("A"),
+        "B": create_chunk_node("B"),
+        "C": create_chunk_node("C"),
+        "D": create_chunk_node("D"),
+        "E": create_chunk_node("E"),
     }
 
     # Create "child" relationships from document to chunks
@@ -310,7 +300,9 @@ def test_find_indirect_clusters_with_document_and_children():
 def test_find_indirect_clusters_with_similarity_relationships():
     """Test find_indirect_clusters with cosine similarity relationships between document nodes."""
     # Create nodes and relationships
-    nodes, relationships = create_chain_of_similarities(create_document_node(name="Start"), node_count=4)
+    nodes, relationships = create_chain_of_similarities(
+        create_document_node("Start"), node_count=4
+    )
 
     # Build knowledge graph
     kg = build_knowledge_graph(nodes, relationships)
@@ -330,7 +322,9 @@ def test_find_indirect_clusters_with_similarity_relationships():
 def test_find_indirect_clusters_with_overlap_relationships():
     """Test find_indirect_clusters with entity overlap relationships."""
     # Create nodes and relationships
-    nodes, relationships = create_chain_of_overlaps(create_document_node(name="Start"), node_count=4)
+    nodes, relationships = create_chain_of_overlap_nodes(
+        create_document_node("Start"), node_count=4
+    )
 
     # Build knowledge graph
     kg = build_knowledge_graph(nodes, relationships)
@@ -383,7 +377,9 @@ def test_find_indirect_clusters_with_condition():
 def test_find_indirect_clusters_with_bidirectional():
     """Test find_indirect_clusters with bidirectional relationships."""
     # Create document nodes with similarity relationships (which are bidirectional)
-    nodes, relationships = create_chain_of_similarities(create_document_node(name="Start"), node_count=3)
+    nodes, relationships = create_chain_of_similarities(
+        create_document_node("Start"), node_count=3
+    )
 
     # Build knowledge graph
     kg = build_knowledge_graph(nodes, relationships)
@@ -507,7 +503,9 @@ def test_find_two_nodes_single_rel_with_document_and_children():
 def test_find_two_nodes_single_rel_with_similarity():
     """Test find_two_nodes_single_rel with cosine similarity relationships."""
     # Create nodes and relationships
-    nodes, relationships = create_chain_of_similarities(create_document_node(name="Start"), node_count=3)
+    nodes, relationships = create_chain_of_similarities(
+        create_document_node("Start"), node_count=3
+    )
 
     # Build knowledge graph
     kg = build_knowledge_graph(nodes, relationships)
@@ -527,7 +525,9 @@ def test_find_two_nodes_single_rel_with_similarity():
 def test_find_two_nodes_single_rel_with_overlap():
     """Test find_two_nodes_single_rel with entity overlap relationships."""
     # Create nodes and relationships
-    nodes, relationships = create_chain_of_overlaps(create_document_node(name="Start"), node_count=3)
+    nodes, relationships = create_chain_of_overlap_nodes(
+        create_document_node("Start"), node_count=3
+    )
 
     # Build knowledge graph
     kg = build_knowledge_graph(nodes, relationships)
@@ -572,8 +572,8 @@ def test_find_two_nodes_single_rel_normalized_order():
     id_a = uuid.UUID("00000000-0000-0000-0000-000000000001")
     id_b = uuid.UUID("00000000-0000-0000-0000-000000000002")
 
-    node_a = create_chunk_node(name="A", id=id_a)
-    node_b = create_chunk_node(name="B", id=id_b)
+    node_a = create_chunk_node("chunk_A")
+    node_b = create_chunk_node("chunk_B")
 
     # Create relationship from B to A (reverse of ID order)
     rel_ba = Relationship(
@@ -595,8 +595,8 @@ def test_find_two_nodes_single_rel_normalized_order():
 def test_find_two_nodes_single_rel_with_self_loops():
     """Test find_two_nodes_single_rel with self-loops (should be excluded)."""
     # Create nodes
-    node_a = create_chunk_node(name="A")
-    node_b = create_chunk_node(name="B")
+    node_a = create_chunk_node("A")
+    node_b = create_chunk_node("B")
 
     # Create relationships including a self-loop
     rel_ab = Relationship(
