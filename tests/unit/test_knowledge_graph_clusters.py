@@ -456,6 +456,73 @@ def test_find_indirect_clusters_depth_limit():
     assert (
         actual_clusters_depth_3_set == expected_clusters_depth_3_set
     ), f"Expected clusters (depth 3): {expected_clusters_depth_3_set}\nActual clusters: {actual_clusters_depth_3_set}"
+    
+    
+def test_find_indirect_clusters_with_cyclic_similarity_relationships():
+    """Test find_indirect_clusters with cyclic cosine similarity relationships."""
+    nodes, relationships = create_chain_of_similarities(
+        create_document_node("A"), node_count=3, cycle=True
+    )
+    # branch off last node so it both cycles and branches
+    branched_nodes, branched_relationships = create_chain_of_similarities(
+        nodes[-1], node_count=2
+    )
+    nodes.extend(branched_nodes[1:])
+    relationships.extend(branched_relationships)
+
+    kg = build_knowledge_graph(nodes, relationships)
+    clusters = kg.find_indirect_clusters(depth_limit=10)
+
+    # With a cycle, we expect additional clusters that include paths through the cycle
+    expected_clusters = [
+        {nodes[0], nodes[1]},
+        {nodes[1], nodes[2]},
+        {nodes[2], nodes[3]},
+        {nodes[2], nodes[0]},
+        {nodes[0], nodes[1], nodes[2]},
+        {nodes[0], nodes[2], nodes[3]},
+        {nodes[1], nodes[2], nodes[0]},
+        {nodes[2], nodes[0], nodes[1]},
+        {nodes[1], nodes[2], nodes[3]},
+        {nodes[0], nodes[1], nodes[2], nodes[3]},
+    ]
+
+    # Convert both lists to sets of frozensets for comparison
+    actual_clusters_set = {frozenset(cluster) for cluster in clusters}
+    expected_clusters_set = {frozenset(cluster) for cluster in expected_clusters}
+
+    assert (
+        actual_clusters_set == expected_clusters_set
+    ), f"Expected clusters: {expected_clusters_set}\nActual clusters: {actual_clusters_set}"
+
+
+def test_find_indirect_clusters_with_cyclic_overlap_relationships():
+    """Test find_indirect_clusters with cyclic entity overlap relationships."""
+    # Create nodes and relationships with cycle=True
+    nodes, relationships = create_chain_of_overlap_nodes(
+        create_document_node("A"), node_count=3, cycle=True
+    )
+    kg = build_knowledge_graph(nodes, relationships)
+    clusters = kg.find_indirect_clusters(depth_limit=10)
+
+    # With a cycle, we expect additional clusters that include paths through the cycle
+    expected_clusters = [
+        {nodes[0], nodes[1]},  # Start->1
+        {nodes[1], nodes[2]},  # 1->2
+        {nodes[2], nodes[0]},  # 2->Start (cycle)
+        {nodes[0], nodes[1], nodes[2]},  # Start->1->2 and also 2->Start->1
+    ]
+
+    # Convert both lists to sets of frozensets for comparison
+    actual_clusters_set = {frozenset(cluster) for cluster in clusters}
+    expected_clusters_set = {frozenset(cluster) for cluster in expected_clusters}
+
+    assert (
+        actual_clusters_set == expected_clusters_set
+    ), f"Expected clusters: {expected_clusters_set}\nActual clusters: {actual_clusters_set}"
+    
+# add test for spider web graph
+
 
 
 def test_find_two_nodes_single_rel_with_similarity():
@@ -606,63 +673,3 @@ def test_find_two_nodes_single_rel_with_self_loops():
         triplets[0][0] == node_b and triplets[0][2] == node_a
     )
     assert triplets[0][1].type == "next"
-
-
-def test_find_indirect_clusters_with_cyclic_similarity_relationships():
-    """Test find_indirect_clusters with cyclic cosine similarity relationships."""
-    nodes, relationships = create_chain_of_similarities(
-        create_document_node("Start"), node_count=3, cycle=True
-    )
-    # branch off last node so it both cycles and branches
-    branched_nodes, branched_relationships = create_chain_of_similarities(
-        nodes[-1], node_count=2
-    )
-    nodes.extend(branched_nodes[1:])
-    relationships.extend(branched_relationships)
-
-    kg = build_knowledge_graph(nodes, relationships)
-    clusters = kg.find_indirect_clusters(depth_limit=10)
-
-    # With a cycle, we expect additional clusters that include paths through the cycle
-    expected_clusters = [
-        {nodes[0], nodes[1]},
-        {nodes[1], nodes[2]},
-        {nodes[2], nodes[3]},
-        {nodes[0], nodes[1], nodes[2]},
-        {nodes[1], nodes[2], nodes[3]},
-        {nodes[0], nodes[1], nodes[2], nodes[3]},
-    ]
-
-    # Convert both lists to sets of frozensets for comparison
-    actual_clusters_set = {frozenset(cluster) for cluster in clusters}
-    expected_clusters_set = {frozenset(cluster) for cluster in expected_clusters}
-
-    assert (
-        actual_clusters_set == expected_clusters_set
-    ), f"Expected clusters: {expected_clusters_set}\nActual clusters: {actual_clusters_set}"
-
-
-def test_find_indirect_clusters_with_cyclic_overlap_relationships():
-    """Test find_indirect_clusters with cyclic entity overlap relationships."""
-    # Create nodes and relationships with cycle=True
-    nodes, relationships = create_chain_of_overlap_nodes(
-        create_document_node("Start"), node_count=3, cycle=True
-    )
-    kg = build_knowledge_graph(nodes, relationships)
-    clusters = kg.find_indirect_clusters(depth_limit=10)
-
-    # With a cycle, we expect additional clusters that include paths through the cycle
-    expected_clusters = [
-        {nodes[0], nodes[1]},  # Start->1
-        {nodes[1], nodes[2]},  # 1->2
-        {nodes[2], nodes[0]},  # 2->Start (cycle)
-        {nodes[0], nodes[1], nodes[2]},  # Start->1->2 and also 2->Start->1
-    ]
-
-    # Convert both lists to sets of frozensets for comparison
-    actual_clusters_set = {frozenset(cluster) for cluster in clusters}
-    expected_clusters_set = {frozenset(cluster) for cluster in expected_clusters}
-
-    assert (
-        actual_clusters_set == expected_clusters_set
-    ), f"Expected clusters: {expected_clusters_set}\nActual clusters: {actual_clusters_set}"
