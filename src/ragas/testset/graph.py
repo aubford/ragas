@@ -404,7 +404,6 @@ class KnowledgeGraph:
         
         # Iteratively pop from each start_node_clusters until we have n unique clusters
         unique_clusters = set()
-        unique_subsets = set()
         i = 0
         while len(unique_clusters) < n and start_node_clusters_list:
             # Cycle through the start node clusters
@@ -413,17 +412,13 @@ class KnowledgeGraph:
             # Pop a cluster and add it to unique_clusters
             cluster: frozenset[Node] = start_node_clusters_list[current_index].pop()
             
-            # Remove any existing clusters that are subsets of this cluster and store
-            # them in unique_subsets in case we end up with <n unique_clusters
+            # Remove any existing clusters that are subsets of this cluster
             existing_subsets = {c for c in unique_clusters if cluster.issuperset(c)}
             if existing_subsets:
                 unique_clusters -= existing_subsets
-                unique_subsets.update(existing_subsets)
             
             # Check if this cluster is a subset of any existing cluster
-            if any(cluster.issubset(c) for c in unique_clusters):
-                unique_subsets.add(cluster)
-            else:
+            if not any(cluster.issubset(c) for c in unique_clusters):
                 # Add the cluster if it's not a subset of any existing cluster
                 unique_clusters.add(cluster)
             
@@ -434,10 +429,7 @@ class KnowledgeGraph:
             else:
                 i += 1
                 
-        if len(unique_clusters) < n:
-            # If we don't have enough unique clusters, add the unique subsets up to n
-            unique_clusters.update(unique_subsets[:n - len(unique_clusters)])
-        return unique_clusters
+        return list(unique_clusters)
 
     def remove_node(
         self, node: Node, inplace: bool = True

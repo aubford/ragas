@@ -294,31 +294,67 @@ def build_knowledge_graph(nodes, relationships):
     return kg
 
 
-def test_find_indirect_clusters_with_document_and_children():
-    """Test find_indirect_clusters with a document and its child nodes."""
-    nodes, relationships = create_document_and_child_nodes()
-    kg = build_knowledge_graph(nodes, relationships)
-    clusters = kg.find_indirect_clusters(depth_limit=10)
-
-    # Define expected clusters based on the graph structure and the find_indirect_clusters algorithm
-    # The algorithm creates clusters for each path through the graph
-    expected_clusters = [
-        {nodes["A"], nodes["B"], nodes["C"], nodes["D"], nodes["E"]},
-        {nodes["A"], nodes["C"], nodes["D"], nodes["E"]},
-        {nodes["A"], nodes["D"], nodes["E"]},
-        {nodes["A"], nodes["E"]},
-        {nodes["B"], nodes["C"], nodes["D"], nodes["E"]},
-        {nodes["C"], nodes["D"], nodes["E"]},
-        {nodes["D"], nodes["E"]},
-    ]
-
+def assert_clusters_equal(actual_clusters, expected_clusters):
+    """
+    Helper function to compare clusters with unordered comparison.
+    
+    Args:
+        actual_clusters: List of sets representing the actual clusters
+        expected_clusters: List of sets representing the expected clusters
+    """
     # Convert both lists to sets of frozensets for unordered comparison
-    actual_clusters_set = {frozenset(cluster) for cluster in clusters}
+    actual_clusters_set = {frozenset(cluster) for cluster in actual_clusters}
     expected_clusters_set = {frozenset(cluster) for cluster in expected_clusters}
 
     assert (
         actual_clusters_set == expected_clusters_set
     ), f"Expected clusters: {expected_clusters_set}\nActual clusters: {actual_clusters_set}"
+
+
+def test_find_indirect_clusters_with_document_and_children():
+    """Test find_indirect_clusters with a document and its child nodes."""
+    nodes, relationships = create_document_and_child_nodes()
+    kg = build_knowledge_graph(nodes, relationships)
+    clusters = kg.find_indirect_clusters(depth_limit=4)
+
+    # Define expected clusters based on the graph structure and the find_indirect_clusters algorithm
+    # The algorithm creates clusters for each path through the graph
+    
+    expected_clusters = [
+        {nodes["A"], nodes["B"]},
+        {nodes["A"], nodes["C"]},
+        {nodes["A"], nodes["D"]},
+        {nodes["A"], nodes["E"]},
+        {nodes["B"], nodes["C"]},
+        {nodes["C"], nodes["D"]},
+        {nodes["D"], nodes["E"]},
+        {nodes["A"], nodes["B"], nodes["C"]},
+        {nodes["A"], nodes["C"], nodes["D"]},
+        {nodes["A"], nodes["D"], nodes["E"]},
+        {nodes["B"], nodes["C"], nodes["D"]},
+        {nodes["C"], nodes["D"], nodes["E"]},
+        {nodes["A"], nodes["B"], nodes["C"], nodes["D"]},
+        {nodes["B"], nodes["C"], nodes["D"], nodes["E"]},
+        {nodes["A"], nodes["C"], nodes["D"], nodes["E"]},
+    ]
+
+    assert_clusters_equal(clusters, expected_clusters)
+    
+def test_find_n_indirect_clusters_with_document_and_children():
+    """Test find_indirect_clusters with a document and its child nodes."""
+    nodes, relationships = create_document_and_child_nodes()
+    kg = build_knowledge_graph(nodes, relationships)
+    clusters = kg.find_n_indirect_clusters(n=5, depth_limit=4)
+
+    # Define expected clusters based on the graph structure and the find_indirect_clusters algorithm
+    # The algorithm creates clusters for each path through the graph
+    expected_clusters = [
+        {nodes["A"], nodes["B"], nodes["C"], nodes["D"]},
+        {nodes["A"], nodes["C"], nodes["D"], nodes["E"]},
+        {nodes["B"], nodes["C"], nodes["D"], nodes["E"]},
+    ]
+
+    assert_clusters_equal(clusters, expected_clusters)
 
 
 def test_find_indirect_clusters_with_similarity_relationships():
@@ -339,13 +375,7 @@ def test_find_indirect_clusters_with_similarity_relationships():
         {nodes[0], nodes[1], nodes[2], nodes[3]},  # Start->1->2->3
     ]
 
-    # Convert both lists to sets of frozensets for comparison
-    actual_clusters_set = {frozenset(cluster) for cluster in clusters}
-    expected_clusters_set = {frozenset(cluster) for cluster in expected_clusters}
-
-    assert (
-        actual_clusters_set == expected_clusters_set
-    ), f"Expected clusters: {expected_clusters_set}\nActual clusters: {actual_clusters_set}"
+    assert_clusters_equal(clusters, expected_clusters)
 
 
 def test_find_indirect_clusters_with_overlap_relationships():
@@ -366,13 +396,7 @@ def test_find_indirect_clusters_with_overlap_relationships():
         {nodes[0], nodes[1], nodes[2], nodes[3]},  # Start->1->2->3
     ]
 
-    # Convert both lists to sets of frozensets for comparison
-    actual_clusters_set = {frozenset(cluster) for cluster in clusters}
-    expected_clusters_set = {frozenset(cluster) for cluster in expected_clusters}
-
-    assert (
-        actual_clusters_set == expected_clusters_set
-    ), f"Expected clusters: {expected_clusters_set}\nActual clusters: {actual_clusters_set}"
+    assert_clusters_equal(clusters, expected_clusters)
 
 
 def test_find_indirect_clusters_with_condition():
@@ -394,13 +418,7 @@ def test_find_indirect_clusters_with_condition():
         {nodes["C"], nodes["D"], nodes["E"]},  # C->D->E
     ]
 
-    # Convert both lists to sets of frozensets for comparison
-    actual_clusters_set = {frozenset(cluster) for cluster in clusters}
-    expected_clusters_set = {frozenset(cluster) for cluster in expected_clusters}
-
-    assert (
-        actual_clusters_set == expected_clusters_set
-    ), f"Expected clusters: {expected_clusters_set}\nActual clusters: {actual_clusters_set}"
+    assert_clusters_equal(clusters, expected_clusters)
 
 
 def test_find_indirect_clusters_with_bidirectional():
@@ -418,13 +436,7 @@ def test_find_indirect_clusters_with_bidirectional():
         {nodes[0], nodes[1], nodes[2]},  # Start->1->2
     ]
 
-    # Convert both lists to sets of frozensets for comparison
-    actual_clusters_set = {frozenset(cluster) for cluster in clusters}
-    expected_clusters_set = {frozenset(cluster) for cluster in expected_clusters}
-
-    assert (
-        actual_clusters_set == expected_clusters_set
-    ), f"Expected clusters: {expected_clusters_set}\nActual clusters: {actual_clusters_set}"
+    assert_clusters_equal(clusters, expected_clusters)
 
 
 def test_find_indirect_clusters_depth_limit():
@@ -447,15 +459,7 @@ def test_find_indirect_clusters_depth_limit():
         {nodes["C"], nodes["D"], nodes["E"]},  # C->D->E
     ]
 
-    # Convert both lists to sets of frozensets for comparison
-    actual_clusters_depth_3_set = {frozenset(cluster) for cluster in clusters_depth_3}
-    expected_clusters_depth_3_set = {
-        frozenset(cluster) for cluster in expected_clusters_depth_3
-    }
-
-    assert (
-        actual_clusters_depth_3_set == expected_clusters_depth_3_set
-    ), f"Expected clusters (depth 3): {expected_clusters_depth_3_set}\nActual clusters: {actual_clusters_depth_3_set}"
+    assert_clusters_equal(clusters_depth_3, expected_clusters_depth_3)
     
     
 def test_find_indirect_clusters_with_cyclic_similarity_relationships():
@@ -487,18 +491,11 @@ def test_find_indirect_clusters_with_cyclic_similarity_relationships():
         {nodes[0], nodes[1], nodes[2], nodes[3]},
     ]
 
-    # Convert both lists to sets of frozensets for comparison
-    actual_clusters_set = {frozenset(cluster) for cluster in clusters}
-    expected_clusters_set = {frozenset(cluster) for cluster in expected_clusters}
-
-    assert (
-        actual_clusters_set == expected_clusters_set
-    ), f"Expected clusters: {expected_clusters_set}\nActual clusters: {actual_clusters_set}"
+    assert_clusters_equal(clusters, expected_clusters)
 
 
 def test_find_indirect_clusters_with_cyclic_overlap_relationships():
     """Test find_indirect_clusters with cyclic entity overlap relationships."""
-    # Create nodes and relationships with cycle=True
     nodes, relationships = create_chain_of_overlap_nodes(
         create_document_node("A"), node_count=3, cycle=True
     )
@@ -513,16 +510,57 @@ def test_find_indirect_clusters_with_cyclic_overlap_relationships():
         {nodes[0], nodes[1], nodes[2]},  # Start->1->2 and also 2->Start->1
     ]
 
-    # Convert both lists to sets of frozensets for comparison
-    actual_clusters_set = {frozenset(cluster) for cluster in clusters}
-    expected_clusters_set = {frozenset(cluster) for cluster in expected_clusters}
-
-    assert (
-        actual_clusters_set == expected_clusters_set
-    ), f"Expected clusters: {expected_clusters_set}\nActual clusters: {actual_clusters_set}"
+    assert_clusters_equal(clusters, expected_clusters)
     
-# add test for spider web graph
 
+def test_find_indirect_clusters_with_spider_web_graph():
+    """Test find_indirect_clusters with a spider web graph where all nodes connect to all other nodes."""
+    # Create nodes
+    # Create nodes as a dictionary with letters as keys
+    nodes = {
+        "A": create_document_node("A"),
+        "B": create_document_node("B"),
+        "C": create_document_node("C"),
+        "D": create_document_node("D")
+    }
+
+    
+    # Create relationships - each node connects to every other node
+    relationships = []
+    node_list = list(nodes.values())
+    for i in range(len(node_list)):
+        for j in range(len(node_list)):
+            if i != j:  # Don't connect node to itself
+                rel = Relationship(
+                    source=node_list[i],
+                    target=node_list[j],
+                    type="cosine_similarity",
+                    bidirectional=True,
+                    properties={"summary_similarity": 0.9},
+                )
+                relationships.append(rel)
+    
+    kg = build_knowledge_graph(nodes, relationships)
+    clusters = kg.find_indirect_clusters(depth_limit=3)
+    
+    # In a spider web, we expect:
+    # 1. All pairs of nodes (directly connected)
+    # 2. All triplets of nodes (connected through intermediate nodes)
+    # 3. The complete set of all nodes
+    expected_clusters = [
+        {nodes["A"], nodes["B"]},
+        {nodes["A"], nodes["C"]},
+        {nodes["A"], nodes["D"]},
+        {nodes["B"], nodes["C"]},
+        {nodes["B"], nodes["D"]},
+        {nodes["C"], nodes["D"]},
+        {nodes["A"], nodes["B"], nodes["C"]},
+        {nodes["A"], nodes["B"], nodes["D"]},
+        {nodes["A"], nodes["C"], nodes["D"]},
+        {nodes["B"], nodes["C"], nodes["D"]}
+    ]
+    
+    assert_clusters_equal(clusters, expected_clusters)
 
 
 def test_find_two_nodes_single_rel_with_similarity():
