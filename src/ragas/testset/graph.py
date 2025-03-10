@@ -321,12 +321,14 @@ class KnowledgeGraph:
     ) -> t.List[t.Set[Node]]:
         """
         Finds n indirect clusters of nodes in the knowledge graph based on a relationship condition.
+        This is performant for large datasets as it only searches ~n paths and uses an adjacency index for lookups.
         Here if A -> B -> C -> D, then A, B, C, and D form a cluster. If there's also a path A -> B -> C -> E,
-        it will form a separate cluster.  The end result is a list of n sets, where each set contains a full path
-        from a randomly selected starting node to a leaf node. Paths are randomized in a way that maximizes variance 
-        by selecting n random starting nodes, grouping all their paths and then iteratively selecting one item from 
-        each starting node group until n unique clusters are found. To maximize information breadth, we also lazily
-        replace any subsets with found supersets when possible.
+        it will form a separate cluster.  
+        The end result is a list of n sets, where each set represents a full path from a starting node to a leaf node. 
+        Paths are randomized in a way that maximizes variance by selecting n random starting nodes, grouping all their 
+        paths and then iteratively selecting one item from each starting node group in a round-robin fashion until n 
+        unique clusters are found. 
+        To boost information breadth, we also lazily replace any subsets with found supersets when possible (non-exhaustive).
         
         Parameters
         ----------
@@ -349,17 +351,17 @@ class KnowledgeGraph:
         ]
 
         # Build adjacency list for faster neighbor lookup - optimized for large datasets
-        adjacency_list: dict[Node, list[Node]] = {}
+        adjacency_list: dict[Node, set[Node]] = {}
         for rel in filtered_relationships:
             # Lazy initialization since we only care about nodes with relationships
             if rel.source not in adjacency_list:
-                adjacency_list[rel.source] = []
-            adjacency_list[rel.source].append(rel.target)
+                adjacency_list[rel.source] = set()
+            adjacency_list[rel.source].add(rel.target)
 
             if rel.bidirectional:
                 if rel.target not in adjacency_list:
-                    adjacency_list[rel.target] = []
-                adjacency_list[rel.target].append(rel.source)
+                    adjacency_list[rel.target] = set()
+                adjacency_list[rel.target].add(rel.source)
 
         # Aggregate clusters for each start node
         start_node_clusters: dict[Node, set[frozenset[Node]]] = {}
@@ -372,11 +374,14 @@ class KnowledgeGraph:
             current_path.append(node)
 
             # Check if we have any neighbors to explore
-            neighbors = adjacency_list.get(node, [])
+            neighbors = adjacency_list.get(node, set())
+            
+            # Filter out neighbors that are already in the current_path to handle cycles
+            unvisited_neighbors = [n for n in neighbors if n not in current_path]
 
-            # If this is a leaf node (no neighbors) or we've reached depth limit
+            # If this is a leaf node (no unvisited neighbors) or we've reached depth limit
             # and we have a valid path of at least 2 nodes, add it as a cluster
-            is_leaf = len(neighbors) == 0
+            is_leaf = len(unvisited_neighbors) == 0
             at_max_depth = len(current_path) == depth_limit
             start_node = current_path[0]
             if (is_leaf or at_max_depth) and len(current_path) > 1:
@@ -385,7 +390,7 @@ class KnowledgeGraph:
                     start_node_clusters[start_node] = set()
                 start_node_clusters[start_node].add(frozenset(current_path))
             else:
-                for neighbor in neighbors:
+                for neighbor in unvisited_neighbors:
                     dfs(neighbor, current_path)
 
             # Backtrack by removing the current node from path
