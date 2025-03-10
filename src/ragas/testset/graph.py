@@ -250,7 +250,7 @@ class KnowledgeGraph:
     def __str__(self) -> str:
         return self.__repr__()
 
-    def find_indirect_clusters(
+    def old_find_indirect_clusters(
         self,
         relationship_condition: t.Callable[[Relationship], bool] = lambda _: True,
         depth_limit: int = 3,
@@ -311,6 +311,90 @@ class KnowledgeGraph:
         ]
 
         return unique_clusters
+
+
+    def find_indirect_clusters(
+        self,
+        relationship_condition: t.Callable[[Relationship], bool] = lambda _: True,
+        depth_limit: int = 3,
+    ) -> t.List[t.Set[Node]]:
+        """
+        Finds indirect clusters of nodes in the knowledge graph based on a relationship condition.
+        Here if A -> B -> C -> D, then A, B, C, and D form a cluster. If there's also a path A -> B -> C -> E,
+        it will form a separate cluster.
+
+        Parameters
+        ----------
+        relationship_condition : Callable[[Relationship], bool], optional
+            A function that takes a Relationship and returns a boolean, by default lambda _: True
+        depth_limit : int, optional
+            Maximum depth for path exploration, by default 3
+
+        Returns
+        -------
+        List[Set[Node]]
+            A list of sets, where each set contains nodes that form a cluster.
+        """
+        # Filter relationships once upfront
+        filtered_relationships = [
+            rel for rel in self.relationships if relationship_condition(rel)
+        ]
+        
+        
+        # Build adjacency list for faster neighbor lookup - optimized for large datasets
+        adjacency_list = {node: [] for node in self.nodes}
+
+        for rel in filtered_relationships:
+            adjacency_list[rel.source].append(rel.target)
+            
+            if rel.bidirectional:
+                adjacency_list[rel.target].append(rel.source)
+        
+        all_clusters = []
+        
+        def dfs(node: Node, current_path: t.List[Node]):
+            # Only check for cycles, depth limit is handled later
+            if node in current_path:
+                return
+            
+            current_path.append(node)
+            
+            # Check if we have any neighbors to explore
+            neighbors = adjacency_list.get(node, [])
+            
+            # If this is a leaf node (no neighbors) or we've reached depth limit
+            # and we have a valid path of at least 2 nodes, add it as a cluster
+            is_leaf = len(neighbors) == 0
+            at_max_depth = len(current_path) == depth_limit
+            
+            if (is_leaf or at_max_depth) and len(current_path) > 1:
+                all_clusters.append(set(current_path.copy()))
+            
+            # Continue DFS with neighbors
+            for neighbor in neighbors:
+                # Use the same path object and backtrack after
+                dfs(neighbor, current_path)
+            
+            # Backtrack by removing the current node from path
+            current_path.pop()
+        
+        # Start DFS from each node
+        for start_node in self.nodes:
+            dfs(start_node, [])
+        
+        # Deduplicate clusters
+        unique_clusters = []
+        seen_clusters = set()
+        
+        for cluster in all_clusters:
+            cluster_key = frozenset(cluster)
+            if cluster_key not in seen_clusters:
+                seen_clusters.add(cluster_key)
+                unique_clusters.append(cluster)
+        
+        return unique_clusters
+
+    
 
     def remove_node(
         self, node: Node, inplace: bool = True
