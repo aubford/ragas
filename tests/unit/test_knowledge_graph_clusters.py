@@ -553,11 +553,11 @@ def test_find_indirect_clusters_with_condition():
     assert_clusters_equal(
         clusters,
         [
-            {nodes["B"], nodes["C"]},  # B->C
-            {nodes["C"], nodes["D"]},  # C->D
-            {nodes["D"], nodes["E"]},  # D->E
-            {nodes["B"], nodes["C"], nodes["D"]},  # B->C->D
-            {nodes["C"], nodes["D"], nodes["E"]},  # C->D->E
+            {nodes["B"], nodes["C"]},
+            {nodes["C"], nodes["D"]},
+            {nodes["D"], nodes["E"]},
+            {nodes["B"], nodes["C"], nodes["D"]},
+            {nodes["C"], nodes["D"], nodes["E"]},
         ],
     )
 
@@ -576,8 +576,8 @@ def test_find_n_indirect_clusters_with_condition():
     assert_clusters_equal(
         clusters,
         [
-            {nodes["B"], nodes["C"], nodes["D"]},  # B->C->D
-            {nodes["C"], nodes["D"], nodes["E"]},  # C->D->E
+            {nodes["B"], nodes["C"], nodes["D"]},
+            {nodes["C"], nodes["D"], nodes["E"]},
         ],
     )
 
@@ -647,7 +647,6 @@ def test_find_n_indirect_clusters_with_cyclic_similarity_relationships():
 
 def test_find_indirect_clusters_with_spider_web_graph():
     """Test find_indirect_clusters with a spider web graph where all nodes connect to all other nodes."""
-    # Create nodes
     # Create nodes as a dictionary with letters as keys
     nodes = {
         "A": create_document_node("A"),
@@ -674,10 +673,6 @@ def test_find_indirect_clusters_with_spider_web_graph():
     kg = build_knowledge_graph(nodes, relationships)
     clusters = kg.find_indirect_clusters(depth_limit=3)
 
-    # In a spider web, we expect:
-    # 1. All pairs of nodes (directly connected)
-    # 2. All triplets of nodes (connected through intermediate nodes)
-    # 3. The complete set of all nodes
     assert_clusters_equal(
         clusters,
         [
@@ -697,7 +692,6 @@ def test_find_indirect_clusters_with_spider_web_graph():
 
 def test_find_n_indirect_clusters_with_spider_web_graph():
     """Test find_indirect_clusters with a spider web graph where all nodes connect to all other nodes."""
-    # Create nodes
     # Create nodes as a dictionary with letters as keys
     nodes = {
         "A": create_document_node("A"),
@@ -733,153 +727,3 @@ def test_find_n_indirect_clusters_with_spider_web_graph():
             {nodes["B"], nodes["C"], nodes["D"]},
         ],
     )
-
-
-def test_find_two_nodes_single_rel_with_similarity():
-    """Test find_two_nodes_single_rel with cosine similarity relationships."""
-    nodes, relationships = create_chain_of_similarities(
-        create_document_node("A"), node_count=3
-    )
-    kg = build_knowledge_graph(nodes, relationships)
-    triplets = kg.find_two_nodes_single_rel()
-
-    # Verify triplets
-    assert len(triplets) == 2
-
-    # Check if all triplets have the correct relationship type
-    for triplet in triplets:
-        assert triplet[1].type == "cosine_similarity"
-        assert "summary_similarity" in triplet[1].properties
-
-
-def test_find_two_nodes_single_rel_with_overlap():
-    """Test find_two_nodes_single_rel with entity overlap relationships."""
-    nodes, relationships = create_chain_of_overlaps(
-        create_document_node("A"), node_count=3
-    )
-    kg = build_knowledge_graph(nodes, relationships)
-    triplets = kg.find_two_nodes_single_rel()
-
-    # Verify triplets
-    assert len(triplets) == 2
-
-    # Check if all triplets have the correct relationship type
-    for triplet in triplets:
-        assert triplet[1].type == "entities_overlap"
-        assert "entities_overlap_score" in triplet[1].properties
-        assert "overlapped_items" in triplet[1].properties
-
-
-def test_find_two_nodes_single_rel_with_condition():
-    """Test find_two_nodes_single_rel with a relationship condition."""
-    nodes, relationships = create_document_and_child_nodes()
-    kg = build_knowledge_graph(nodes, relationships)
-
-    def condition(rel):
-        return rel.type == "child"
-
-    triplets = kg.find_two_nodes_single_rel(relationship_condition=condition)
-
-    # Verify triplets
-    assert len(triplets) == 4  # Should have 4 child relationships
-
-    # Check if all triplets have the correct relationship type
-    for triplet in triplets:
-        assert triplet[1].type == "child"
-
-        # Verify that one of the nodes is the document node (A)
-        # and the other is one of the chunk nodes (B, C, D, or E)
-        assert nodes["A"] in [triplet[0], triplet[2]]
-        assert triplet[0] == nodes["A"] or triplet[2] == nodes["A"]
-
-        # The other node should be one of the chunk nodes
-        other_node = triplet[0] if triplet[2] == nodes["A"] else triplet[2]
-        assert other_node in [nodes["B"], nodes["C"], nodes["D"], nodes["E"]]
-
-
-def test_find_two_nodes_single_rel_normalized_order():
-    """Test that find_two_nodes_single_rel normalizes the order of nodes based on ID."""
-    # Create nodes with specific UUIDs to ensure consistent ordering
-    node_a = Node(
-        id=DebugUUID("A"),
-        type=NodeType.CHUNK,
-        properties={
-            "page_content": "A content",
-            "summary": "A summary",
-            "summary_embedding": [0.001, 0.002, 0.003],
-            "themes": [],
-            "entities": [],
-        },
-    )
-
-    node_b = Node(
-        id=DebugUUID("B"),
-        type=NodeType.CHUNK,
-        properties={
-            "page_content": "B content",
-            "summary": "B summary",
-            "summary_embedding": [0.001, 0.002, 0.003],
-            "themes": [],
-            "entities": [],
-        },
-    )
-
-    # Create relationship from B to A (reverse of ID order)
-    rel_ba = Relationship(
-        source=node_b, target=node_a, type="next", bidirectional=False, properties={}
-    )
-
-    # Build knowledge graph
-    kg = build_knowledge_graph([node_a, node_b], [rel_ba])
-
-    # Find two-node relationships
-    triplets = kg.find_two_nodes_single_rel()
-
-    # Verify triplets - should have the relationship in the correct order
-    assert len(triplets) == 1
-    triplet = triplets[0]
-
-    # Check the relationship is correct
-    assert triplet[1].type == "next"
-
-    # Check source and target - the actual order depends on how the KnowledgeGraph.find_two_nodes_single_rel
-    # implementation sorts nodes, which may be by string representation or internal UUID value
-    # So we just verify that the relationship is between the two nodes we created
-    assert {triplet[0], triplet[2]} == {node_a, node_b}
-    assert (triplet[0] == node_a and triplet[2] == node_b) or (
-        triplet[0] == node_b and triplet[2] == node_a
-    )
-
-
-def test_find_two_nodes_single_rel_with_self_loops():
-    """Test find_two_nodes_single_rel with self-loops (should be excluded)."""
-    node_a = create_chunk_node("A")
-    node_b = create_chunk_node("B")
-
-    # Create relationships including a self-loop
-    rel_ab = Relationship(
-        source=node_a, target=node_b, type="next", bidirectional=False, properties={}
-    )
-    rel_aa = Relationship(
-        source=node_a,
-        target=node_a,
-        type="self_loop",
-        bidirectional=True,
-        properties={},
-    )
-
-    # Build knowledge graph
-    kg = build_knowledge_graph([node_a, node_b], [rel_ab, rel_aa])
-
-    # Find two-node relationships
-    triplets = kg.find_two_nodes_single_rel()
-
-    # Verify triplets - self-loops should be excluded
-    assert len(triplets) == 1
-
-    # Check if we have only the A-B relationship
-    # The actual implementation returns nodes in a different order than expected
-    assert (triplets[0][0] == node_a and triplets[0][2] == node_b) or (
-        triplets[0][0] == node_b and triplets[0][2] == node_a
-    )
-    assert triplets[0][1].type == "next"

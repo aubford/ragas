@@ -323,12 +323,15 @@ class KnowledgeGraph:
         Finds n indirect clusters of nodes in the knowledge graph based on a relationship condition.
         This is performant for large datasets as it only searches ~n paths and uses an adjacency index for lookups.
         Here if A -> B -> C -> D, then A, B, C, and D form a cluster. If there's also a path A -> B -> C -> E,
-        it will form a separate cluster.
-        The end result is a list of n sets, where each set represents a full path from a starting node to a leaf node.
+        it will form a separate cluster. 
+        The end result is a list of n sets, where each set represents a full path from a starting node to a leaf node or a
+        segment of that path of a number of nodes equal to the `depth_limit`.
         Paths are randomized in a way that maximizes variance by selecting n random starting nodes, grouping all their
         paths and then iteratively selecting one item from each starting node group in a round-robin fashion until n
         unique clusters are found.
-        To boost information breadth, we also lazily replace any subsets with found supersets when possible (non-exhaustive).
+        To boost information breadth, we also lazily replace any subsets with found supersets if a superset is discovered. 
+        So for a `depth_limit` of 4, if we have A -> B -> C -> D then we will return only {A,B,C,D} and not subsets like {A,B,C}.
+        This is non-exhaustive so subsets are still possible if the superset is not discovered. 
 
         Parameters
         ----------
