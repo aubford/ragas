@@ -330,8 +330,8 @@ class KnowledgeGraph:
         paths and then iteratively selecting one item from each starting node group in a round-robin fashion until n
         unique clusters are found.
         To boost information breadth, we also lazily replace any subsets with found supersets if a superset is discovered. 
-        So for a `depth_limit` of 4, if we have A -> B -> C -> D then we will return only {A,B,C,D} and not subsets like {A,B,C}.
-        This is non-exhaustive so subsets are still possible if the superset is not discovered. 
+        So for a `depth_limit` of 4, if we have A -> B -> C -> D and we find {A,B,C,D} and {A,B,C} only {A,B,C,D} will be returned.
+        This is non-exhaustive to save resources so subsets are still possible if the superset is not discovered. 
 
         Parameters
         ----------
@@ -361,15 +361,21 @@ class KnowledgeGraph:
         filtered_relationships: list[Relationship] = [
             rel for rel in self.relationships if relationship_condition(rel)
         ]
+        
+        if not filtered_relationships:
+            raise ValueError(
+                "No relationships match the provided condition. Cannot form clusters."
+            )
 
         # Build adjacency list for faster neighbor lookup - optimized for large datasets
         adjacency_list: dict[Node, set[Node]] = {}
+        unique_edges: set[frozenset[Node]] = set()
         for rel in filtered_relationships:
             # Lazy initialization since we only care about nodes with relationships
             if rel.source not in adjacency_list:
                 adjacency_list[rel.source] = set()
             adjacency_list[rel.source].add(rel.target)
-
+            unique_edges.add(frozenset({rel.source, rel.target}))
             if rel.bidirectional:
                 if rel.target not in adjacency_list:
                     adjacency_list[rel.target] = set()
@@ -377,13 +383,23 @@ class KnowledgeGraph:
 
         # Aggregate clusters for each start node
         start_node_clusters: dict[Node, set[frozenset[Node]]] = {}
+        # sample enough starting nodes to handle worst case grouping scenario where nodes are grouped 
+        # in independent clusters of size equal to depth_limit. This only surfaces when there are less
+        # unique edges than nodes.
+        connected_nodes = set().union(*unique_edges)
+        sample_size = (n - 1) * depth_limit + 1 if len(unique_edges) < len(connected_nodes) else max(n, depth_limit, 10)
 
         def dfs(node: Node, current_path: t.List[Node]):
-            # Only check for cycles, depth limit is handled later
+            # Block cycles
             if node in current_path:
                 return
-
+            
             current_path.append(node)
+            start_node = current_path[0]
+            
+            # Cap exploration to max usable clusters so complexity doesn't spiral
+            if len(start_node_clusters.get(start_node, [])) > sample_size:
+                return
 
             # Check if we have any neighbors to explore
             neighbors = adjacency_list.get(node, set())
@@ -395,7 +411,6 @@ class KnowledgeGraph:
             # and we have a valid path of at least 2 nodes, add it as a cluster
             is_leaf = len(unvisited_neighbors) == 0
             at_max_depth = len(current_path) >= depth_limit
-            start_node = current_path[0]
             if (is_leaf or at_max_depth) and len(current_path) > 1:
                 # Lazy initialization of the set for this start node
                 if start_node not in start_node_clusters:
@@ -408,14 +423,12 @@ class KnowledgeGraph:
             # Backtrack by removing the current node from path
             current_path.pop()
 
-        # Create a copy of nodes and shuffle them for random starting points
+        # Shuffle nodes for random starting points
         # Use adjacency list since that has filtered out isolated nodes
         start_nodes = list(adjacency_list.keys())
         random.shuffle(start_nodes)
-        # sample enough starting nodes to handle worst case grouping scenario where
-        # all nodes are grouped into independent clusters of `n` nodes and `depth_limit == n`.
-        sample_size = (n - 1) * depth_limit + 1
-        for start_node in start_nodes[:sample_size]:
+        samples = start_nodes[:sample_size]
+        for start_node in samples:
             dfs(start_node, [])
 
         start_node_clusters_list: list[set[frozenset[Node]]] = list(
