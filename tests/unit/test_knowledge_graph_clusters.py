@@ -309,6 +309,19 @@ def assert_clusters_equal(actual_clusters, expected_clusters):
     ), f"Expected clusters: {expected_clusters_set}\nActual clusters: {actual_clusters_set}"
 
 
+def assert_n_clusters_with_varying_params(kg, param_list):
+    """
+    Helper function to test find_n_indirect_clusters with various combinations of n and depth_limit.
+
+    Args:
+        kg: KnowledgeGraph instance to test
+        param_list: List of tuples (n, depth_limit) to test
+    """
+    for n, depth_limit in param_list:
+        clusters = kg.find_n_indirect_clusters(n=n, depth_limit=depth_limit)
+        assert len(clusters) == n
+
+
 def test_find_indirect_clusters_with_document_and_children():
     """Test find_indirect_clusters with a document and its child nodes."""
     nodes, relationships = create_document_and_child_nodes()
@@ -357,6 +370,11 @@ def test_find_n_indirect_clusters_with_document_and_children():
         ],
     )
 
+    # Test different combinations of n and depth_limit parameters
+    assert_n_clusters_with_varying_params(
+        kg, [(3, 4), (3, 3), (3, 2), (2, 4), (2, 3), (2, 2)]
+    )
+
 
 def test_find_indirect_clusters_with_similarity_relationships():
     """Test find_indirect_clusters with cosine similarity relationships between document nodes."""
@@ -366,16 +384,15 @@ def test_find_indirect_clusters_with_similarity_relationships():
     kg = build_knowledge_graph(nodes, relationships)
     clusters = kg.find_indirect_clusters(depth_limit=4)
 
-    # With bidirectional relationships, we expect clusters for each possible path
     assert_clusters_equal(
         clusters,
         [
-            {nodes[0], nodes[1]},  # A->1
-            {nodes[1], nodes[2]},  # 1->2
-            {nodes[2], nodes[3]},  # 2->3
-            {nodes[0], nodes[1], nodes[2]},  # A->1->2
-            {nodes[1], nodes[2], nodes[3]},  # 1->2->3
-            {nodes[0], nodes[1], nodes[2], nodes[3]},  # A->1->2->3
+            {nodes[0], nodes[1]},
+            {nodes[1], nodes[2]},
+            {nodes[2], nodes[3]},
+            {nodes[0], nodes[1], nodes[2]},
+            {nodes[1], nodes[2], nodes[3]},
+            {nodes[0], nodes[1], nodes[2], nodes[3]},
         ],
     )
 
@@ -388,11 +405,10 @@ def test_find_n_indirect_clusters_with_similarity_relationships():
     kg = build_knowledge_graph(nodes, relationships)
     clusters = kg.find_n_indirect_clusters(n=5, depth_limit=4)
 
-    # With bidirectional relationships, we expect clusters for each possible path
     assert_clusters_equal(
         clusters,
         [
-            {nodes[0], nodes[1], nodes[2], nodes[3]},  # A->1->2->3
+            {nodes[0], nodes[1], nodes[2], nodes[3]},
         ],
     )
 
@@ -410,7 +426,7 @@ def test_find_n_indirect_clusters_with_similarity_relationships():
     for item in new_nodes + fnc_relationships + tnc_relationships:
         kg.add(item)
 
-    clusters = kg.find_n_indirect_clusters(n=15, depth_limit=3)
+    clusters = kg.find_n_indirect_clusters(n=12, depth_limit=3)
 
     assert_clusters_equal(
         clusters,
@@ -430,8 +446,10 @@ def test_find_n_indirect_clusters_with_similarity_relationships():
         ],
     )
 
-    clusters = kg.find_n_indirect_clusters(n=2, depth_limit=4)
-    assert len(clusters) == 2
+    # Test different combinations of n and depth_limit parameters
+    assert_n_clusters_with_varying_params(
+        kg, [(4, 4), (4, 3), (4, 2), (3, 4), (3, 3), (3, 2), (2, 4), (2, 3), (2, 2)]
+    )
 
 
 def test_find_indirect_clusters_with_overlap_relationships():
@@ -442,15 +460,14 @@ def test_find_indirect_clusters_with_overlap_relationships():
     kg = build_knowledge_graph(nodes, relationships)
     clusters = kg.find_indirect_clusters(depth_limit=3)
 
-    # With unidirectional relationships, we expect clusters for each path
     assert_clusters_equal(
         clusters,
         [
-            {nodes[0], nodes[1]},  # Start->1
-            {nodes[1], nodes[2]},  # 1->2
-            {nodes[2], nodes[3]},  # 2->3
-            {nodes[0], nodes[1], nodes[2]},  # Start->1->2
-            {nodes[1], nodes[2], nodes[3]},  # 1->2->3
+            {nodes[0], nodes[1]},
+            {nodes[1], nodes[2]},
+            {nodes[2], nodes[3]},
+            {nodes[0], nodes[1], nodes[2]},
+            {nodes[1], nodes[2], nodes[3]},
         ],
     )
 
@@ -503,8 +520,10 @@ def test_find_n_indirect_clusters_with_overlap_relationships():
         ],
     )
 
-    clusters = kg.find_n_indirect_clusters(n=2, depth_limit=4)
-    assert len(clusters) == 2
+    # Test different combinations of n and depth_limit parameters
+    assert_n_clusters_with_varying_params(
+        kg, [(3, 4), (3, 3), (3, 2), (2, 4), (2, 3), (2, 2)]
+    )
 
 
 def test_find_n_indirect_clusters_handles_worst_case_grouping():
@@ -512,7 +531,7 @@ def test_find_n_indirect_clusters_handles_worst_case_grouping():
     Test that the algorithm will still return n indirect clusters when `n == depth_limit` and all nodes
     are grouped into independent clusters of `n` nodes.
     """
-    # The problem is dependent on random.shuffle() so set a specific seed to expose it deterministically.
+    # The edge case is dependent on random.shuffle() so set a specific seed to expose it deterministically.
     # Otherwise it only fails 50% of the time when the 2 starting nodes are from the same cluster.
     original_state = random.getstate()
     random.seed(5)
@@ -581,6 +600,9 @@ def test_find_n_indirect_clusters_with_condition():
         ],
     )
 
+    # Test various combinations of n and depth_limit with the condition
+    assert_n_clusters_with_varying_params(kg, [(2, 3), (2, 2)])
+
 
 # test cyclic relationships for bidirectional relationships
 def test_find_indirect_clusters_with_cyclic_similarity_relationships():
@@ -630,7 +652,7 @@ def test_find_n_indirect_clusters_with_cyclic_similarity_relationships():
     relationships.extend(branched_relationships)
 
     kg = build_knowledge_graph(nodes, relationships)
-    clusters = kg.find_n_indirect_clusters(n=15, depth_limit=3)
+    clusters = kg.find_n_indirect_clusters(n=5, depth_limit=3)
 
     # With a cycle, we expect additional clusters that include paths through the cycle
     assert_clusters_equal(
@@ -643,6 +665,9 @@ def test_find_n_indirect_clusters_with_cyclic_similarity_relationships():
             {nodes[1], nodes[2], nodes[3]},
         ],
     )
+
+    # Test various combinations of n and depth_limit
+    assert_n_clusters_with_varying_params(kg, [(1, 4), (3, 3), (2, 3), (2, 2)])
 
 
 def test_find_indirect_clusters_with_spider_web_graph():
@@ -661,14 +686,15 @@ def test_find_indirect_clusters_with_spider_web_graph():
     for i in range(len(node_list)):
         for j in range(len(node_list)):
             if i != j:  # Don't connect node to itself
-                rel = Relationship(
-                    source=node_list[i],
-                    target=node_list[j],
-                    type="cosine_similarity",
-                    bidirectional=True,
-                    properties={"summary_similarity": 0.9},
+                relationships.append(
+                    Relationship(
+                        source=node_list[i],
+                        target=node_list[j],
+                        type="cosine_similarity",
+                        bidirectional=True,
+                        properties={"summary_similarity": 0.9},
+                    )
                 )
-                relationships.append(rel)
 
     kg = build_knowledge_graph(nodes, relationships)
     clusters = kg.find_indirect_clusters(depth_limit=3)
@@ -706,14 +732,15 @@ def test_find_n_indirect_clusters_with_spider_web_graph():
     for i in range(len(node_list)):
         for j in range(len(node_list)):
             if i != j:  # Don't connect node to itself
-                rel = Relationship(
-                    source=node_list[i],
-                    target=node_list[j],
-                    type="cosine_similarity",
-                    bidirectional=True,
-                    properties={"summary_similarity": 0.9},
+                relationships.append(
+                    Relationship(
+                        source=node_list[i],
+                        target=node_list[j],
+                        type="cosine_similarity",
+                        bidirectional=True,
+                        properties={"summary_similarity": 0.9},
+                    )
                 )
-                relationships.append(rel)
 
     kg = build_knowledge_graph(nodes, relationships)
     clusters = kg.find_n_indirect_clusters(n=10, depth_limit=3)
@@ -727,3 +754,33 @@ def test_find_n_indirect_clusters_with_spider_web_graph():
             {nodes["B"], nodes["C"], nodes["D"]},
         ],
     )
+
+    # Test various combinations of n and depth_limit
+    assert_n_clusters_with_varying_params(
+        kg, [(4, 3), (3, 3), (3, 2), (2, 3), (2, 2), (1, 2)]
+    )
+
+
+def test_find_n_indirect_clusters_with_large_spider_web_graph():
+    """Test find_n_indirect_clusters with a large 100 node spider web graph where all nodes connect to all other nodes."""
+    node_list = []
+    relationships = []
+    for i in range(100):
+        node_list.append(create_document_node(i))
+
+    for i in range(len(node_list)):
+        for j in range(len(node_list)):
+            if i != j:
+                relationships.append(
+                    Relationship(
+                        source=node_list[i],
+                        target=node_list[j],
+                        type="cosine_similarity",
+                        bidirectional=True,
+                        properties={"summary_similarity": 0.9},
+                    )
+                )
+
+    kg = build_knowledge_graph(node_list, relationships)
+    # Test various combinations of n and depth_limit
+    assert_n_clusters_with_varying_params(kg, [(30, 10), (20, 8), (10, 5), (5, 3)])
