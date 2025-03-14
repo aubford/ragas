@@ -421,7 +421,7 @@ class KnowledgeGraph:
                 if start_node not in start_node_clusters:
                     start_node_clusters[start_node] = set()
                 start_node_clusters[start_node].add(frozenset(current_path))
-            else:
+            elif neighbors:
                 for neighbor in neighbors:
                     # Block cycles
                     if neighbor not in current_path:
