@@ -1,7 +1,7 @@
 import json
+import random
 import typing as t
 import uuid
-import random
 from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
@@ -409,10 +409,14 @@ class KnowledgeGraph:
             path_length = len(current_path)
             at_max_depth = path_length >= depth_limit
             neighbors = adjacency_list.get(node, None)
-            
+
             # If this is a leaf node or we've reached depth limit
             # and we have a valid path of at least 2 nodes, add it as a cluster
-            if path_length > 1 and (at_max_depth or not neighbors or all(n in current_path for n in neighbors)):
+            if path_length > 1 and (
+                at_max_depth
+                or not neighbors
+                or all(n in current_path for n in neighbors)
+            ):
                 # Lazy initialization of the set for this start node
                 if start_node not in start_node_clusters:
                     start_node_clusters[start_node] = set()
@@ -454,14 +458,14 @@ class KnowledgeGraph:
             # and collect any existing clusters that are subsets of this cluster
             is_subset = False
             subsets_to_remove = set()
-            
+
             for existing in unique_clusters:
                 if cluster.issubset(existing):
                     is_subset = True
                     break
                 elif cluster.issuperset(existing):
                     subsets_to_remove.add(existing)
-            
+
             # Only add the new cluster if it's not a subset of any existing cluster
             if not is_subset:
                 # Remove any subsets of the new cluster

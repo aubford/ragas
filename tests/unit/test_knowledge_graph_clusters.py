@@ -1,8 +1,10 @@
-import pytest
-import uuid
-from ragas.testset.graph import KnowledgeGraph, Node, NodeType, Relationship
 import random
 import time
+import uuid
+
+import pytest
+
+from ragas.testset.graph import KnowledgeGraph, Node, NodeType, Relationship
 
 
 class DebugUUID(uuid.UUID):
