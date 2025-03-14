@@ -371,13 +371,10 @@ def assert_n_clusters_with_varying_params(kg, param_list):
 
 
 def test_find_indirect_clusters_with_document_and_children():
-    """Test find_indirect_clusters with a document and its child nodes."""
+    """Test find_indirect_clusters for a document (A) and its child nodes (B, C, D, E)."""
     nodes, relationships = create_document_and_child_nodes()
     kg = build_knowledge_graph(nodes, relationships)
     clusters = kg.find_indirect_clusters(depth_limit=4)
-
-    # Define expected clusters based on the graph structure and the find_indirect_clusters algorithm
-    # The algorithm creates clusters for each path through the graph
 
     assert_clusters_equal(
         clusters,
@@ -402,7 +399,7 @@ def test_find_indirect_clusters_with_document_and_children():
 
 
 def test_find_n_indirect_clusters_with_document_and_children():
-    """Test find_indirect_clusters with a document and its child nodes."""
+    """Test find_n_indirect_clusters for a document (A) and its child nodes (B, C, D, E)."""
     nodes, relationships = create_document_and_child_nodes()
     kg = build_knowledge_graph(nodes, relationships)
 
@@ -445,7 +442,10 @@ def test_find_indirect_clusters_with_similarity_relationships():
 
 
 def test_find_n_indirect_clusters_with_similarity_relationships():
-    """Test find_indirect_clusters with cosine similarity relationships between document nodes."""
+    """
+    Test find_n_indirect_clusters with bidirectional cosine similarity relationships between document nodes.
+    Test that we handle cycles and branches correctly.
+    """
     nodes, relationships = create_chain_of_similarities(
         create_document_node("A"), node_count=4
     )
@@ -500,7 +500,7 @@ def test_find_n_indirect_clusters_with_similarity_relationships():
 
 
 def test_find_indirect_clusters_with_overlap_relationships():
-    """Test find_indirect_clusters with entity overlap relationships."""
+    """Test find_indirect_clusters with directional entity overlap relationships."""
     nodes, relationships = create_chain_of_overlaps(
         create_document_node("A"), node_count=4
     )
@@ -520,7 +520,10 @@ def test_find_indirect_clusters_with_overlap_relationships():
 
 
 def test_find_n_indirect_clusters_with_overlap_relationships():
-    """Test find_indirect_clusters with entity overlap relationships."""
+    """
+    Test find_n_indirect_clusters with directional entity overlap relationships.
+    Test that we handle cycles and branches correctly.
+    """
     nodes, relationships = create_chain_of_overlaps(
         create_document_node("A"), node_count=4
     )
@@ -575,11 +578,11 @@ def test_find_n_indirect_clusters_with_overlap_relationships():
 
 def test_find_n_indirect_clusters_handles_worst_case_grouping():
     """
-    Test that the algorithm will still return n indirect clusters when `n == depth_limit` and all nodes
-    are grouped into independent clusters of `n` nodes.
+    Test that the algorithm will always return n indirect clusters when all nodes are grouped into independent clusters
+    of `n` nodes. This is a worst-case scenario that can lead to significant under-sampling if not handled correctly.
     """
-    # The edge case is dependent on random.shuffle() so set a specific seed to expose it deterministically.
-    # Otherwise it only fails 50% of the time when the 2 starting nodes are from the same cluster.
+    # The edge case is dependent on random.shuffle() so set a specific seed that exposes it deterministically.
+    # Otherwise it only fails 50% of the time (when the 2 starting nodes are from the same cluster).
     original_state = random.getstate()
     random.seed(5)
 
@@ -629,7 +632,7 @@ def test_find_indirect_clusters_with_condition():
 
 
 def test_find_n_indirect_clusters_with_condition():
-    """Test find_indirect_clusters with a relationship condition."""
+    """Test find_n_indirect_clusters with a relationship condition."""
     nodes, relationships = create_document_and_child_nodes()
     kg = build_knowledge_graph(nodes, relationships)
 
@@ -686,7 +689,7 @@ def test_find_indirect_clusters_with_cyclic_similarity_relationships():
 
 # test cyclic relationships for bidirectional relationships
 def test_find_n_indirect_clusters_with_cyclic_similarity_relationships():
-    """Test find_indirect_clusters with cyclic cosine similarity relationships."""
+    """Test find_n_indirect_clusters with cyclic cosine similarity relationships."""
     nodes, relationships = create_chain_of_similarities(
         create_document_node("A"), node_count=3, cycle=True
     )
@@ -743,7 +746,7 @@ def test_find_indirect_clusters_with_web_graph():
 
 
 def test_find_n_indirect_clusters_with_web_graph():
-    """Test find_indirect_clusters with a spider web graph where all nodes connect to all other nodes."""
+    """Test find_n_indirect_clusters with a spider web graph where all nodes connect to all other nodes."""
     nodes, relationships = create_web_of_similarities(node_count=4)
 
     # Convert nodes list to dictionary for easier assertion
@@ -767,10 +770,10 @@ def test_find_n_indirect_clusters_with_web_graph():
     )
 
 
-def test_performance_find_n_indirect_clusters_web():
+def test_performance_find_n_indirect_clusters_max_density():
     """
-    Test the time complexity performance of find_n_indirect_clusters with graphs of maximal connectivity.
-    The use of n to cap sampling should keep the time complexity <quadratic.
+    Test the time complexity performance of find_n_indirect_clusters with graphs of maximum density.
+    Capping sampling relative to n should keep the time complexity <cubic.
     """
     # List of graph sizes to test (number of nodes)
     graph_sizes = [5, 10, 20, 80]
@@ -823,14 +826,7 @@ def test_performance_find_n_indirect_clusters_web():
 
 @pytest.fixture
 def constant_n_knowledge_graphs():
-    """
-    Returns the three knowledge graphs used in test_performance_find_n_indirect_clusters_constant_n.
-
-    Returns
-    -------
-    list
-        A list of three KnowledgeGraph objects with increasing sizes [10, 100, 1000]
-    """
+    """Returns the three knowledge graphs of increasing size."""
     graph_sizes = [10, 50, 500]
     knowledge_graphs = []
 
@@ -848,7 +844,7 @@ def test_performance_find_n_indirect_clusters_large_web_constant_n(
     """
     Test the time complexity performance of find_n_indirect_clusters with a constant n=10
     but dramatically increasing graph sizes. This tests how the algorithm scales when we're
-    only interested in a fixed number of clusters regardless of graph size.
+    only interested in sampling a fixed number of clusters but may have a big graph.
     """
     constant_n = 10
     results = []
@@ -907,7 +903,7 @@ def test_performance_find_n_indirect_clusters_large_web_constant_n(
 def test_performance_find_n_indirect_clusters_independent_chains():
     """
     Test the time complexity performance of find_n_indirect_clusters with independent chains of 4 nodes.
-    This uses the inflated sample size due to the fact that the nodes are isolated.
+    This uses the inflated sample size that is triggered when the nodes are isolated such that edges are less than nodes.
     """
     # List of total node counts to test
     graph_sizes = [8, 16, 32, 128, 1024]
