@@ -321,7 +321,8 @@ class KnowledgeGraph:
     ) -> t.List[t.Set[Node]]:
         """
         Finds up to n indirect clusters of nodes in the knowledge graph based on a relationship condition.
-        Optimized for large datasets by using an adjacency index for lookups and limiting path exploration.
+        Optimized for large datasets by using an adjacency index for lookups and limiting path exploration
+        relative to n.
 
         A cluster represents a path through the graph. For example, if A -> B -> C -> D exists in the graph,
         then {A, B, C, D} forms a cluster. If there's also a path A -> B -> C -> E, it forms a separate cluster.
@@ -345,7 +346,7 @@ class KnowledgeGraph:
         relationship_condition : Callable[[Relationship], bool], optional
             A function that takes a Relationship and returns a boolean, by default lambda _: True
         depth_limit : int, optional
-            Maximum depth for path exploration, by default 3. Must be >1 for obvious reasons.
+            Maximum depth for path exploration, by default 3. Must be at least 2 to form clusters by definition.
 
         Returns
         -------
@@ -357,7 +358,6 @@ class KnowledgeGraph:
         ValueError
             If depth_limit < 2, n < 1, or no relationships match the provided condition.
         """
-        # A cluster must be at least 2 nodes by definition.
         if depth_limit < 2:
             raise ValueError("depth_limit must be at least 2 to form valid clusters")
 
@@ -399,7 +399,6 @@ class KnowledgeGraph:
             if len(unique_edges) < len(connected_nodes)
             else max(n, depth_limit, 10)
         )
-        print(f"sample_size: {sample_size}")
 
         def dfs(node: Node, start_node: Node, current_path: t.Set[Node]):
             # Terminate exploration when max usable clusters is reached so complexity doesn't spiral
@@ -440,7 +439,7 @@ class KnowledgeGraph:
         )
 
         # Iteratively pop from each start_node_clusters until we have n unique clusters
-        # Avoid adding duplicates and subset/superset pairs so we have good diversity. We
+        # Avoid adding duplicates and subset/superset pairs so we have diversity. We
         # favor supersets over subsets if we are given a choice.
         unique_clusters = set()
         i = 0
@@ -448,8 +447,8 @@ class KnowledgeGraph:
             # Cycle through the start node clusters
             current_index = i % len(start_node_clusters_list)
 
-            # Pop a cluster and add it to unique_clusters
-            cluster: frozenset[Node] = start_node_clusters_list[current_index].pop()
+            current_start_node_clusters = start_node_clusters_list[current_index]
+            cluster: frozenset[Node] = current_start_node_clusters.pop()
 
             # Check if the new cluster is a subset of any existing cluster
             # and collect any existing clusters that are subsets of this cluster
@@ -470,7 +469,7 @@ class KnowledgeGraph:
                 unique_clusters.add(cluster)
 
             # If this set is now empty, remove it
-            if not start_node_clusters_list[current_index]:
+            if not current_start_node_clusters:
                 start_node_clusters_list.pop(current_index)
                 # Don't increment i since we removed an element to account for shift
             else:

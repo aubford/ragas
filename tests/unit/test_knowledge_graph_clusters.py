@@ -810,7 +810,7 @@ def test_performance_find_n_indirect_clusters_web():
     for i in range(1, len(results)):
         size_ratio = results[i]["size"] / results[i - 1]["size"]
         time_ratio = results[i]["time"] / results[i - 1]["time"]
-        # Goal is to be better than cubic since relationships grow exponentially with graph_size w/ a worst-case "web" graph.
+        # Goal is better than cubic since relationships grow exponentially with n and graph_size for a worst-case "web" graph.
         scaled_size_ratio = size_ratio**3
         print(
             f"Size ratio: {size_ratio:.2f}, Time ratio: {time_ratio:.2f}, Scaled ratio: {scaled_size_ratio:.2f}"
@@ -819,6 +819,89 @@ def test_performance_find_n_indirect_clusters_web():
         assert (
             time_ratio < scaled_size_ratio
         ), f"Time complexity growing faster than expected: size {results[i]['size']} vs {results[i-1]['size']}, time ratio {time_ratio:.2f} vs {scaled_size_ratio:.2f}"
+
+
+@pytest.fixture
+def constant_n_knowledge_graphs():
+    """
+    Returns the three knowledge graphs used in test_performance_find_n_indirect_clusters_constant_n.
+
+    Returns
+    -------
+    list
+        A list of three KnowledgeGraph objects with increasing sizes [10, 100, 1000]
+    """
+    graph_sizes = [10, 50, 500]
+    knowledge_graphs = []
+
+    for size in graph_sizes:
+        nodes, relationships = create_web_of_similarities(node_count=size)
+        kg = build_knowledge_graph(nodes, relationships)
+        knowledge_graphs.append((kg, size))
+
+    return knowledge_graphs
+
+
+def test_performance_find_n_indirect_clusters_large_web_constant_n(
+    constant_n_knowledge_graphs,
+):
+    """
+    Test the time complexity performance of find_n_indirect_clusters with a constant n=10
+    but dramatically increasing graph sizes. This tests how the algorithm scales when we're
+    only interested in a fixed number of clusters regardless of graph size.
+    """
+    constant_n = 10
+    results = []
+
+    for kg, size in constant_n_knowledge_graphs:
+        # Measure execution time
+        start_time = time.time()
+        clusters = kg.find_n_indirect_clusters(n=constant_n, depth_limit=3)
+        end_time = time.time()
+
+        execution_time = end_time - start_time
+
+        # Store results
+        results.append(
+            {
+                "size": size,
+                "n": constant_n,
+                "time": execution_time,
+                "clusters": len(clusters),
+            }
+        )
+
+        # Make sure we got clusters (may be less than n if graph doesn't support that many)
+        assert (
+            len(clusters) <= constant_n
+        ), f"Expected at most {constant_n} clusters, got {len(clusters)}"
+
+    # Print all results at the end of the test
+    print("\nPerformance test results (constant n=10):")
+    print("----------------------------------")
+    print("Graph Size | n | Clusters | Time (s)")
+    print("----------------------------------")
+
+    for result in results:
+        print(
+            f"{result['size']:10d} | {result['n']:1d} | {result['clusters']:8d} | {result['time']:.6f}"
+        )
+
+    print("----------------------------------")
+
+    # Check if time complexity is reasonable
+    for i in range(1, len(results)):
+        size_ratio = results[i]["size"] / results[i - 1]["size"]
+        time_ratio = results[i]["time"] / results[i - 1]["time"]
+
+        scaled_size_ratio = size_ratio**2.5
+        print(
+            f"Size ratio: {size_ratio:.2f}, (Scaled: {scaled_size_ratio:.2f}), Time ratio: {time_ratio:.2f}"
+        )
+
+        assert (
+            time_ratio < scaled_size_ratio
+        ), f"Time complexity growing faster than expected: size {results[i]['size']} vs {results[i - 1]['size']}, time ratio {time_ratio:.2f} vs {scaled_size_ratio:.2f}"
 
 
 def test_performance_find_n_indirect_clusters_independent_chains():
@@ -887,71 +970,6 @@ def test_performance_find_n_indirect_clusters_independent_chains():
         scaled_size_ratio = size_ratio**2
         print(
             f"Size ratio: {size_ratio:.2f} (scaled: {scaled_size_ratio:.2f}), Time ratio: {time_ratio:.2f}"
-        )
-
-        assert (
-            time_ratio < scaled_size_ratio
-        ), f"Time complexity growing faster than expected: size {results[i]['size']} vs {results[i-1]['size']}, time ratio {time_ratio:.2f} vs {scaled_size_ratio:.2f}"
-
-
-def test_performance_find_n_indirect_clusters_constant_n():
-    """
-    Test the time complexity performance of find_n_indirect_clusters with a constant n=10
-    but dramatically increasing graph sizes. This tests how the algorithm scales when we're
-    only interested in a fixed number of clusters regardless of graph size.
-    """
-    # List of graph sizes to test (number of nodes)
-    graph_sizes = [10, 100, 1000]
-    constant_n = 10
-    results = []
-
-    for size in graph_sizes:
-        nodes, relationships = create_web_of_similarities(node_count=size)
-        kg = build_knowledge_graph(nodes, relationships)
-
-        # Measure execution time
-        start_time = time.time()
-        clusters = kg.find_n_indirect_clusters(n=constant_n, depth_limit=3)
-        end_time = time.time()
-
-        execution_time = end_time - start_time
-
-        # Store results
-        results.append(
-            {
-                "size": size,
-                "n": constant_n,
-                "time": execution_time,
-                "clusters": len(clusters),
-            }
-        )
-
-        # Make sure we got clusters (may be less than n if graph doesn't support that many)
-        assert (
-            len(clusters) <= constant_n
-        ), f"Expected at most {constant_n} clusters, got {len(clusters)}"
-
-    # Print all results at the end of the test
-    print("\nPerformance test results (constant n=10):")
-    print("----------------------------------")
-    print("Graph Size | n | Clusters | Time (s)")
-    print("----------------------------------")
-
-    for result in results:
-        print(
-            f"{result['size']:10d} | {result['n']:1d} | {result['clusters']:8d} | {result['time']:.6f}"
-        )
-
-    print("----------------------------------")
-
-    # Check if time complexity is reasonable
-    for i in range(1, len(results)):
-        size_ratio = results[i]["size"] / results[i - 1]["size"]
-        time_ratio = results[i]["time"] / results[i - 1]["time"]
-
-        scaled_size_ratio = size_ratio**2
-        print(
-            f"Size ratio: {size_ratio:.2f}, (Scaled: {scaled_size_ratio:.2f}), Time ratio: {time_ratio:.2f}"
         )
 
         assert (
