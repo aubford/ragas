@@ -393,8 +393,8 @@ class KnowledgeGraph:
         # sample enough starting nodes to handle worst case grouping scenario where nodes are grouped
         # in independent clusters of size equal to depth_limit. This only surfaces when there are less
         # unique edges than nodes.
-        connected_nodes = set().union(*unique_edges)
-        sample_size = (
+        connected_nodes: set[Node] = set().union(*unique_edges)
+        sample_size: int = (
             (n - 1) * depth_limit + 1
             if len(unique_edges) < len(connected_nodes)
             else max(n, depth_limit, 10)
@@ -432,9 +432,9 @@ class KnowledgeGraph:
 
         # Shuffle nodes for random starting points
         # Use adjacency list since that has filtered out isolated nodes
-        start_nodes = list(adjacency_list.keys())
+        start_nodes: list[Node] = list(adjacency_list.keys())
         random.shuffle(start_nodes)
-        samples = start_nodes[:sample_size]
+        samples: list[Node] = start_nodes[:sample_size]
         for start_node in samples:
             dfs(start_node, start_node, set())
 
@@ -445,19 +445,19 @@ class KnowledgeGraph:
         # Iteratively pop from each start_node_clusters until we have n unique clusters
         # Avoid adding duplicates and subset/superset pairs so we have diversity. We
         # favor supersets over subsets if we are given a choice.
-        unique_clusters = set()
+        unique_clusters: set[frozenset[Node]] = set()
         i = 0
         while len(unique_clusters) < n and start_node_clusters_list:
             # Cycle through the start node clusters
             current_index = i % len(start_node_clusters_list)
 
-            current_start_node_clusters = start_node_clusters_list[current_index]
+            current_start_node_clusters: set[frozenset[Node]] = start_node_clusters_list[current_index]
             cluster: frozenset[Node] = current_start_node_clusters.pop()
 
             # Check if the new cluster is a subset of any existing cluster
             # and collect any existing clusters that are subsets of this cluster
             is_subset = False
-            subsets_to_remove = set()
+            subsets_to_remove: set[frozenset[Node]] = set()
 
             for existing in unique_clusters:
                 if cluster.issubset(existing):
@@ -479,7 +479,7 @@ class KnowledgeGraph:
             else:
                 i += 1
 
-        return list(unique_clusters)
+        return [set(cluster) for cluster in unique_clusters]
 
     def remove_node(
         self, node: Node, inplace: bool = True
