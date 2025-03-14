@@ -59,7 +59,7 @@ def create_chunk_node(name):
     )
 
 
-def create_chain_of_similarities(starting_node, node_count=5, cycle=False):
+def create_chain_of_similarities(starting_node: Node, node_count=5, cycle=False):
     """
     Create a chain of document nodes with cosine similarity relationships.
 
@@ -78,7 +78,7 @@ def create_chain_of_similarities(starting_node, node_count=5, cycle=False):
         (list of nodes, list of relationships)
     """
     # Use starting_node as the first node
-    nodes = [starting_node]
+    nodes: list[Node] = [starting_node]
 
     # Create remaining nodes
     for i in range(node_count - 1):
@@ -109,7 +109,7 @@ def create_chain_of_similarities(starting_node, node_count=5, cycle=False):
     return nodes, relationships
 
 
-def create_chain_of_overlaps(starting_node, node_count=3, cycle=False):
+def create_chain_of_overlaps(starting_node: Node, node_count=3, cycle=False):
     """
     Create a chain of nodes with entity overlap relationships.
 
@@ -128,8 +128,8 @@ def create_chain_of_overlaps(starting_node, node_count=3, cycle=False):
         (list of nodes, list of relationships)
     """
     # Create nodes (mix of document and chunk nodes)
-    nodes = []
-    relationships = []
+    nodes: list[Node] = []
+    relationships: list[Relationship] = []
 
     # Use starting_node as the first node and set its entity
     starting_node.properties["entities"] = [f"E_{starting_node.id}_1"]
@@ -202,7 +202,7 @@ def create_web_of_similarities(node_count=4, similarity_score=0.9):
     # Create nodes
     nodes = []
     for i in range(node_count):
-        nodes.append(create_document_node(name=f"{i}"))
+        nodes.append(create_document_node(name=str(i)))
 
     # Create relationships
     relationships = []
@@ -221,50 +221,50 @@ def create_web_of_similarities(node_count=4, similarity_score=0.9):
     return nodes, relationships
 
 
-def create_document_and_child_nodes():
+def create_document_and_child_nodes() -> tuple[list[Node], list[Relationship]]:
     """
     Create a document node and its child chunk nodes with the same structure as create_branched_graph.
 
     Returns
     -------
     tuple
-        (dict of nodes, list of relationships)
+        (list of nodes, list of relationships)
     """
     # Create nodes - A is a document, the rest are chunks
-    nodes = {
-        "A": create_document_node("A"),
-        "B": create_chunk_node("B"),
-        "C": create_chunk_node("C"),
-        "D": create_chunk_node("D"),
-        "E": create_chunk_node("E"),
-    }
+    doc_node = create_document_node("1")
+    chunk_b = create_chunk_node("2")
+    chunk_c = create_chunk_node("3")
+    chunk_d = create_chunk_node("4")
+    chunk_e = create_chunk_node("5")
+
+    nodes = [doc_node, chunk_b, chunk_c, chunk_d, chunk_e]
 
     # Create "child" relationships from document to chunks
     child_relationships = [
         Relationship(
-            source=nodes["A"],
-            target=nodes["B"],
+            source=nodes[0],
+            target=nodes[1],
             type="child",
             bidirectional=False,
             properties={},
         ),
         Relationship(
-            source=nodes["A"],
-            target=nodes["C"],
+            source=nodes[0],
+            target=nodes[2],
             type="child",
             bidirectional=False,
             properties={},
         ),
         Relationship(
-            source=nodes["A"],
-            target=nodes["D"],
+            source=nodes[0],
+            target=nodes[3],
             type="child",
             bidirectional=False,
             properties={},
         ),
         Relationship(
-            source=nodes["A"],
-            target=nodes["E"],
+            source=nodes[0],
+            target=nodes[4],
             type="child",
             bidirectional=False,
             properties={},
@@ -274,22 +274,22 @@ def create_document_and_child_nodes():
     # Create "next" relationships between chunks
     next_relationships = [
         Relationship(
-            source=nodes["B"],
-            target=nodes["C"],
+            source=nodes[1],
+            target=nodes[2],
             type="next",
             bidirectional=False,
             properties={},
         ),
         Relationship(
-            source=nodes["C"],
-            target=nodes["D"],
+            source=nodes[2],
+            target=nodes[3],
             type="next",
             bidirectional=False,
             properties={},
         ),
         Relationship(
-            source=nodes["D"],
-            target=nodes["E"],
+            source=nodes[3],
+            target=nodes[4],
             type="next",
             bidirectional=False,
             properties={},
@@ -319,6 +319,8 @@ def build_knowledge_graph(nodes, relationships):
         The constructed knowledge graph
     """
     kg = KnowledgeGraph()
+    isolated_nodes = [create_document_node("Iso_A"), create_document_node("Iso_B")]
+    nodes = nodes + isolated_nodes
 
     # Add nodes to the graph
     if isinstance(nodes, dict):
@@ -381,21 +383,21 @@ def test_find_indirect_clusters_with_document_and_children():
     assert_clusters_equal(
         clusters,
         [
-            {nodes["A"], nodes["B"]},
-            {nodes["A"], nodes["C"]},
-            {nodes["A"], nodes["D"]},
-            {nodes["A"], nodes["E"]},
-            {nodes["B"], nodes["C"]},
-            {nodes["C"], nodes["D"]},
-            {nodes["D"], nodes["E"]},
-            {nodes["A"], nodes["B"], nodes["C"]},
-            {nodes["A"], nodes["C"], nodes["D"]},
-            {nodes["A"], nodes["D"], nodes["E"]},
-            {nodes["B"], nodes["C"], nodes["D"]},
-            {nodes["C"], nodes["D"], nodes["E"]},
-            {nodes["A"], nodes["B"], nodes["C"], nodes["D"]},
-            {nodes["A"], nodes["C"], nodes["D"], nodes["E"]},
-            {nodes["B"], nodes["C"], nodes["D"], nodes["E"]},
+            {nodes[0], nodes[1]},
+            {nodes[0], nodes[2]},
+            {nodes[0], nodes[3]},
+            {nodes[0], nodes[4]},
+            {nodes[1], nodes[2]},
+            {nodes[2], nodes[3]},
+            {nodes[3], nodes[4]},
+            {nodes[0], nodes[1], nodes[2]},
+            {nodes[0], nodes[2], nodes[3]},
+            {nodes[0], nodes[3], nodes[4]},
+            {nodes[1], nodes[2], nodes[3]},
+            {nodes[2], nodes[3], nodes[4]},
+            {nodes[0], nodes[1], nodes[2], nodes[3]},
+            {nodes[0], nodes[2], nodes[3], nodes[4]},
+            {nodes[1], nodes[2], nodes[3], nodes[4]},
         ],
     )
 
@@ -410,9 +412,9 @@ def test_find_n_indirect_clusters_with_document_and_children():
     assert_clusters_equal(
         clusters,
         [
-            {nodes["A"], nodes["B"], nodes["C"], nodes["D"]},
-            {nodes["A"], nodes["C"], nodes["D"], nodes["E"]},
-            {nodes["B"], nodes["C"], nodes["D"], nodes["E"]},
+            {nodes[0], nodes[1], nodes[2], nodes[3]},
+            {nodes[0], nodes[2], nodes[3], nodes[4]},
+            {nodes[1], nodes[2], nodes[3], nodes[4]},
         ],
     )
 
@@ -624,11 +626,11 @@ def test_find_indirect_clusters_with_condition():
     assert_clusters_equal(
         clusters,
         [
-            {nodes["B"], nodes["C"]},
-            {nodes["C"], nodes["D"]},
-            {nodes["D"], nodes["E"]},
-            {nodes["B"], nodes["C"], nodes["D"]},
-            {nodes["C"], nodes["D"], nodes["E"]},
+            {nodes[1], nodes[2]},
+            {nodes[2], nodes[3]},
+            {nodes[3], nodes[4]},
+            {nodes[1], nodes[2], nodes[3]},
+            {nodes[2], nodes[3], nodes[4]},
         ],
     )
 
@@ -647,8 +649,8 @@ def test_find_n_indirect_clusters_with_condition():
     assert_clusters_equal(
         clusters,
         [
-            {nodes["B"], nodes["C"], nodes["D"]},
-            {nodes["C"], nodes["D"], nodes["E"]},
+            {nodes[1], nodes[2], nodes[3]},
+            {nodes[2], nodes[3], nodes[4]},
         ],
     )
 
@@ -779,7 +781,7 @@ def test_performance_find_n_indirect_clusters_max_density():
     """
     # List of graph sizes to test (number of nodes)
     graph_sizes = [5, 10, 20, 80]
-    results = []
+    results: list[dict] = []
 
     for size in graph_sizes:
         nodes, relationships = create_web_of_similarities(node_count=size)
@@ -849,7 +851,7 @@ def test_performance_find_n_indirect_clusters_large_web_constant_n(
     only interested in sampling a fixed number of clusters but may have a big graph.
     """
     constant_n = 10
-    results = []
+    results: list[dict] = []
 
     for kg, size in constant_n_knowledge_graphs:
         # Measure execution time
@@ -909,7 +911,7 @@ def test_performance_find_n_indirect_clusters_independent_chains():
     """
     # List of total node counts to test
     graph_sizes = [8, 16, 32, 128, 1024]
-    results = []
+    results: list[dict] = []
 
     for size in graph_sizes:
         # Calculate how many chains of 4 nodes we need
