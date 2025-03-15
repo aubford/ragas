@@ -45,6 +45,7 @@ class MultiHopAbstractQuerySynthesizer(MultiHopQuerySynthesizer):
     def get_node_clusters(
         self, n: int, knowledge_graph: KnowledgeGraph
     ) -> t.List[t.Set[Node]]:
+        """Find n indirect clusters of nodes based on relationship condition"""
 
         node_clusters = knowledge_graph.find_n_indirect_clusters(
             n,
@@ -66,7 +67,7 @@ class MultiHopAbstractQuerySynthesizer(MultiHopQuerySynthesizer):
         """
         Generates a list of scenarios on type MultiHopAbstractQuerySynthesizer
         Steps to generate scenarios:
-        1. Find indirect clusters of nodes based on relationship condition
+        1. Find n indirect clusters of nodes based on relationship condition
         2. Calculate the number of samples that should be created per cluster to get n samples in total
         3. For each cluster of nodes
             a. Find the child nodes of the cluster nodes
