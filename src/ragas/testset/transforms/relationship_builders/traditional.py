@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from ragas.metrics._string import DistanceMeasure
 from ragas.testset.graph import KnowledgeGraph, Node, Relationship
 from ragas.testset.transforms.base import RelationshipBuilder
+from ragas.testset.transforms.relationship_builders.cosine import (
+    _nodes_are_not_siblings,
+)
 
 
 @dataclass
@@ -60,7 +63,9 @@ class OverlapScoreBuilder(RelationshipBuilder):
     new_property_name: str = "overlap_score"
     distance_measure: DistanceMeasure = DistanceMeasure.JARO_WINKLER
     distance_threshold: float = 0.9
+    noise_threshold: float = 0.05
     threshold: float = 0.01
+    target_cross_source: t.Optional[t.Callable[[Node], bool]] = None
 
     def __post_init__(self):
         try:
@@ -77,12 +82,32 @@ class OverlapScoreBuilder(RelationshipBuilder):
             DistanceMeasure.JARO_WINKLER: distance.JaroWinkler,
         }
 
-    def _overlap_score(self, overlaps: t.List[bool]) -> float:
+    def _overlap_score(
+        self, matched_x: int, matched_y: int, total_x: int, total_y: int
+    ) -> float:
+        """
+        Calculate a modified F1 score to measure overlap between two sets.
 
-        return sum(overlaps) / len(overlaps) if len(overlaps) > 0 else 0.0
+        Args:
+            matched_x: Set of indices from set X that have matches
+            matched_y: Set of indices from set Y that have matches
+            total_x: Total number of items in set X (excluding noisy items)
+            total_y: Total number of items in set Y (excluding noisy items)
+
+        Returns:
+            float: Overlap score between 0.0 and 1.0
+        """
+        if total_x == 0 or total_y == 0 or matched_x == 0 and matched_y == 0:
+            return 0.0
+
+        match_ratio_x = matched_x / total_x
+        match_ratio_y = matched_y / total_y
+
+        # F1-style score: 2 * (match_ratio_x * match_ratio_y) / (match_ratio_x + match_ratio_y)
+        return 2 * (match_ratio_x * match_ratio_y) / (match_ratio_x + match_ratio_y)
 
     def _get_noisy_items(
-        self, nodes: t.List[Node], property_name: str, percent_cut_off: float = 0.05
+        self, nodes: t.List[Node], property_name: str, percent_cut_off: float
     ) -> t.List[str]:
 
         all_items = []
@@ -108,9 +133,13 @@ class OverlapScoreBuilder(RelationshipBuilder):
             self.property_name
 
         distance_measure = self.distance_measure_map[self.distance_measure]
-        noisy_items = self._get_noisy_items(kg.nodes, self.property_name)
+        noisy_items = self._get_noisy_items(
+            kg.nodes, self.property_name, self.noise_threshold
+        )
         relationships = []
         for i, node_x in enumerate(kg.nodes):
+            if i % 500 == 0:
+                print(f"Processing node {i} of {len(kg.nodes)}", flush=True)
             for j, node_y in enumerate(kg.nodes):
                 if i >= j:
                     continue
@@ -124,30 +153,68 @@ class OverlapScoreBuilder(RelationshipBuilder):
                     node_x_items = node_x_items.get(self.key_name, [])
                     node_y_items = node_y_items.get(self.key_name, [])
 
-                overlaps = []
-                overlapped_items = []
-                for x in node_x_items:
-                    if x not in noisy_items:
-                        for y in node_y_items:
-                            if y not in noisy_items:
-                                similarity = 1 - distance_measure.distance(
-                                    x.lower(), y.lower()
-                                )
-                                verdict = similarity >= self.distance_threshold
-                                overlaps.append(verdict)
-                                if verdict:
-                                    overlapped_items.append((x, y))
+                # Filter out noisy items
+                filtered_x_items = [x for x in node_x_items if x not in noisy_items]
+                filtered_y_items = [y for y in node_y_items if y not in noisy_items]
 
-                similarity = self._overlap_score(overlaps)
-                if similarity >= self.threshold:
+                if not filtered_x_items or not filtered_y_items:
+                    continue
+
+                matched_x_indices = set()
+                matched_y_indices = set()
+                overlapped_items = []
+
+                # Build a similarity matrix
+                for x_idx, x in enumerate(filtered_x_items):
+                    for y_idx, y in enumerate(filtered_y_items):
+                        similarity = 1 - distance_measure.distance(x.lower(), y.lower())
+                        if similarity >= self.distance_threshold:
+                            matched_x_indices.add(x_idx)
+                            matched_y_indices.add(y_idx)
+                            overlapped_items.append((x, y))
+
+                # Calculate the overlap score
+                similarity = self._overlap_score(
+                    len(matched_x_indices),
+                    len(matched_y_indices),
+                    len(node_x_items),
+                    len(node_y_items),
+                )
+
+                is_valid_match = True
+                if self.target_cross_source is not None:
+                    is_valid_match = self.target_cross_source(
+                        node_x
+                    ) != self.target_cross_source(node_y)
+
+                # We separate siblings into their own relationship type so we can put in place methods
+                # to prevent search drift when querying the KG.
+                nodes_are_not_siblings = _nodes_are_not_siblings(node_x, node_y)
+                if nodes_are_not_siblings:
+                    threshold = self.threshold
+                else:
+                    thresh_diff = 1 - self.threshold
+                    thresh_diff = thresh_diff * 0.9
+                    threshold = 1 - thresh_diff
+
+                if similarity >= threshold and is_valid_match:
                     relationships.append(
                         Relationship(
                             source=node_x,
                             target=node_y,
-                            type=f"{self.property_name}_overlap",
+                            bidirectional=True,
+                            type=(
+                                self.new_property_name
+                                if nodes_are_not_siblings
+                                else f"sibling_{self.new_property_name}"
+                            ),
                             properties={
-                                f"{self.property_name}_{self.new_property_name}": similarity,
+                                self.new_property_name: similarity,
                                 "overlapped_items": overlapped_items,
+                                "num_noisy_items": len(node_x_items)
+                                + len(node_y_items)
+                                - len(filtered_x_items)
+                                - len(filtered_y_items),
                             },
                         )
                     )

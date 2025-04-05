@@ -3,10 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import typing as t
-
-from tqdm.auto import tqdm
-
-from ragas.executor import as_completed, is_event_loop_running
+import concurrent.futures
+from ragas.executor import is_event_loop_running
 from ragas.run_config import RunConfig
 from ragas.testset.graph import KnowledgeGraph
 from ragas.testset.transforms.base import BaseGraphTransformation
@@ -44,19 +42,16 @@ class Parallel:
 
 async def run_coroutines(coroutines: t.List[t.Coroutine], desc: str, max_workers: int):
     """
-    Run a list of coroutines in parallel.
+    Run a list of coroutines in parallel using gather.
     """
-    for future in tqdm(
-        await as_completed(coroutines, max_workers=max_workers),
-        desc=desc,
-        total=len(coroutines),
-        # whether you want to keep the progress bar after completion
-        leave=False,
-    ):
-        try:
-            await future
-        except Exception as e:
-            logger.error(f"unable to apply transformation: {e}")
+    # Create tasks for all coroutines
+    tasks = [asyncio.create_task(coro) for coro in coroutines]
+
+    # Use gather to run all tasks in parallel
+    try:
+        await asyncio.gather(*tasks)
+    except Exception as e:
+        logger.error(f"Error during transformation: {e}")
 
 
 def get_desc(transform: BaseGraphTransformation | Parallel):
@@ -90,7 +85,8 @@ def apply_transforms(
     callbacks: t.Optional[Callbacks] = None,
 ):
     """
-    Apply a list of transformations to a knowledge graph in place.
+    Apply a list of transformations to a knowledge graph in place,
+    using ThreadPoolExecutor for parallelism without pickling issues.
     """
     # apply nest_asyncio to fix the event loop issue in jupyter
     apply_nest_asyncio()
@@ -99,10 +95,58 @@ def apply_transforms(
     if isinstance(transforms, BaseGraphTransformation):
         transforms = [transforms]
 
-    # apply the transformations
-    # if Sequences, apply each transformation sequentially
-    if isinstance(transforms, t.List):
+    # If running Parallel transforms, use ThreadPoolExecutor instead of ProcessPoolExecutor
+    if isinstance(transforms, Parallel):
+        transforms_list = transforms.transformations
+        max_workers = min(
+            len(transforms_list),
+            run_config.max_workers if run_config.max_workers > 0 else 4,
+        )
+
+        logger.info(
+            f"Applying {len(transforms_list)} transforms in parallel with {max_workers} workers"
+        )
+
+        def apply_transform(transform):
+            """Apply a transformation and return its results to be merged later"""
+            logger.info(f"Starting transform: {transform.__class__.__name__}")
+
+            # Create a local copy of the knowledge graph for this transform
+            # to avoid thread safety issues with shared data structures
+            local_kg = KnowledgeGraph(nodes=kg.nodes.copy(), relationships=[])
+
+            # Run the coroutines for this transform on the local copy
+            asyncio.run(
+                run_coroutines(
+                    transform.generate_execution_plan(local_kg),
+                    get_desc(transform),
+                    1,  # Use a single worker within each thread
+                )
+            )
+
+            logger.info(f"Completed transform: {transform.__class__.__name__}")
+            return local_kg.relationships
+
+        # Use ThreadPoolExecutor to run transforms in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(apply_transform, transform)
+                for transform in transforms_list
+            ]
+
+            # Wait for all futures to complete and collect relationships
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    # Merge relationships back into the original KG
+                    relationships = future.result()
+                    kg.relationships.extend(relationships)
+                except Exception as e:
+                    logger.error(f"Error in transformation: {e}")
+
+    # If running sequential transforms, keep the original behavior
+    elif isinstance(transforms, t.List):
         for transform in transforms:
+            logger.info(f"Applying transform: {transform.__class__.__name__}")
             asyncio.run(
                 run_coroutines(
                     transform.generate_execution_plan(kg),
@@ -110,15 +154,6 @@ def apply_transforms(
                     run_config.max_workers,
                 )
             )
-    # if Parallel, collect inside it and run it all
-    elif isinstance(transforms, Parallel):
-        asyncio.run(
-            run_coroutines(
-                transforms.generate_execution_plan(kg),
-                get_desc(transforms),
-                run_config.max_workers,
-            )
-        )
     else:
         raise ValueError(
             f"Invalid transforms type: {type(transforms)}. Expects a list of BaseGraphTransformations or a Parallel instance."
