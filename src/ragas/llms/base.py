@@ -78,6 +78,7 @@ class BaseRagasLLM(ABC):
         temperature: float = 1e-8,
         stop: t.Optional[t.List[str]] = None,
         callbacks: Callbacks = None,
+        **kwargs: t.Any,
     ) -> LLMResult: ...
 
     @abstractmethod
@@ -88,6 +89,7 @@ class BaseRagasLLM(ABC):
         temperature: t.Optional[float] = None,
         stop: t.Optional[t.List[str]] = None,
         callbacks: Callbacks = None,
+        **kwargs: t.Any,
     ) -> LLMResult: ...
 
     async def generate(
@@ -97,6 +99,7 @@ class BaseRagasLLM(ABC):
         temperature: t.Optional[float] = None,
         stop: t.Optional[t.List[str]] = None,
         callbacks: Callbacks = None,
+        **kwargs: t.Any,
     ) -> LLMResult:
         """Generate text using the given event loop."""
 
@@ -112,6 +115,7 @@ class BaseRagasLLM(ABC):
             temperature=temperature,
             stop=stop,
             callbacks=callbacks,
+            **kwargs,
         )
 
         # check there are no max_token issues
@@ -199,6 +203,7 @@ class LangchainLLMWrapper(BaseRagasLLM):
         temperature: t.Optional[float] = None,
         stop: t.Optional[t.List[str]] = None,
         callbacks: Callbacks = None,
+        **kwargs: t.Any,
     ) -> LLMResult:
         # figure out the temperature to set
         old_temperature: float | None = None
@@ -214,12 +219,14 @@ class LangchainLLMWrapper(BaseRagasLLM):
                 n=n,
                 stop=stop,
                 callbacks=callbacks,
+                **kwargs,
             )
         else:
             result = self.langchain_llm.generate_prompt(
                 prompts=[prompt] * n,
                 stop=stop,
                 callbacks=callbacks,
+                **kwargs,
             )
             # make LLMResult.generation appear as if it was n_completions
             # note that LLMResult.runs is still a list that represents each run
@@ -239,6 +246,7 @@ class LangchainLLMWrapper(BaseRagasLLM):
         temperature: t.Optional[float] = None,
         stop: t.Optional[t.List[str]] = None,
         callbacks: Callbacks = None,
+        **kwargs: t.Any,
     ) -> LLMResult:
         # handle temperature
         old_temperature: float | None = None
@@ -255,12 +263,14 @@ class LangchainLLMWrapper(BaseRagasLLM):
                 prompts=[prompt],
                 stop=stop,
                 callbacks=callbacks,
+                **kwargs,
             )
         else:
             result = await self.langchain_llm.agenerate_prompt(
                 prompts=[prompt] * n,
                 stop=stop,
                 callbacks=callbacks,
+                **kwargs,
             )
             # make LLMResult.generation appear as if it was n_completions
             # note that LLMResult.runs is still a list that represents each run

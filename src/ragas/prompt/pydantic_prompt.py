@@ -19,6 +19,9 @@ from ragas.exceptions import RagasOutputParserException
 from .base import BasePrompt, StringIO
 from .utils import extract_json, get_all_strings, update_strings
 
+# noinspection PyProtectedMember
+from openai.lib._parsing._completions import type_to_response_format_param
+
 if t.TYPE_CHECKING:
     from langchain_core.callbacks import Callbacks
 
@@ -72,17 +75,17 @@ class PydanticPrompt(BasePrompt, t.Generic[InputModel, OutputModel]):
     def to_string(self, data: t.Optional[InputModel] = None) -> str:
         return (
             f"{self.instruction}\n"
-            + self._generate_output_signature()
+            # + self._generate_output_signature()
             + "\n"
             + self._generate_examples()
             + "\n-----------------------------\n"
             + "\nNow perform the same with the following input\n"
             + (
-                "input: " + data.model_dump_json(indent=4, exclude_none=True) + "\n"
+                "Input: " + data.model_dump_json(indent=4, exclude_none=True) + "\n"
                 if data is not None
                 else "Input: (None)\n"
             )
-            + "Output: "
+            + "\nOutput: "
         )
 
     async def generate(
@@ -193,6 +196,7 @@ class PydanticPrompt(BasePrompt, t.Generic[InputModel, OutputModel]):
             temperature=temperature,
             stop=stop,
             callbacks=prompt_cb,
+            response_format=type_to_response_format_param(self.output_model),
         )
 
         output_models = []

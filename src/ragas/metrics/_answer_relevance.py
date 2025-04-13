@@ -6,7 +6,7 @@ import typing as t
 from dataclasses import dataclass, field
 
 import numpy as np
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ragas.dataset_schema import SingleTurnSample
 from ragas.metrics.base import (
@@ -25,24 +25,30 @@ if t.TYPE_CHECKING:
 
 
 class ResponseRelevanceOutput(BaseModel):
-    question: str
-    noncommittal: int
+    question: str = Field(
+        description="A question that the given answer directly addresses"
+    )
+    noncommittal: int = Field(
+        description="Indicator for whether the answer is committal (0) or noncommittal (1)"
+    )
 
 
 class ResponseRelevanceInput(BaseModel):
-    response: str
+    answer: str = Field(
+        description="The answer to generate a question for and analyze for responsiveness"
+    )
 
 
 class ResponseRelevancePrompt(
     PydanticPrompt[ResponseRelevanceInput, ResponseRelevanceOutput]
 ):
-    instruction = """Generate a question for the given answer and Identify if answer is noncommittal. Give noncommittal as 1 if the answer is noncommittal and 0 if the answer is committal. A noncommittal answer is one that is evasive, vague, or ambiguous. For example, "I don't know" or "I'm not sure" are noncommittal answers"""
+    instruction = """For the given answer, generate a question that the answer would directly address. Also determine if the answer is noncommittal. Assign a value of 1 if the answer is noncommittal (evasive, vague, ambiguous) or 0 if the answer is committal (direct, specific, clear). Examples of noncommittal answers include "I don't know" or "I'm not sure"."""
     input_model = ResponseRelevanceInput
     output_model = ResponseRelevanceOutput
     examples = [
         (
             ResponseRelevanceInput(
-                response="""Albert Einstein was born in Germany.""",
+                answer="""Albert Einstein was born in Germany.""",
             ),
             ResponseRelevanceOutput(
                 question="Where was Albert Einstein born?",
@@ -51,7 +57,7 @@ class ResponseRelevancePrompt(
         ),
         (
             ResponseRelevanceInput(
-                response="""I don't know about the  groundbreaking feature of the smartphone invented in 2023 as am unaware of information beyond 2022. """,
+                answer="""I don't know about the groundbreaking feature of the smartphone invented in 2023 as I am unaware of information beyond 2022.""",
             ),
             ResponseRelevanceOutput(
                 question="What was the groundbreaking feature of the smartphone invented in 2023?",
@@ -113,11 +119,17 @@ class ResponseRelevancy(MetricWithLLM, MetricWithEmbeddings, SingleTurnMetric):
         )
 
     def _calculate_score(
-        self, answers: t.Sequence[ResponseRelevanceOutput], row: t.Dict
+        self, responses: t.Sequence[ResponseRelevanceOutput], row: t.Dict
     ) -> float:
+        # Fast fail if any response is noncommittal
+        has_noncommittal_response = np.any(
+            [response.noncommittal for response in responses]
+        )
+        if has_noncommittal_response:
+            return 0.0
+
         question = row["user_input"]
-        gen_questions = [answer.question for answer in answers]
-        committal = np.any([answer.noncommittal for answer in answers])
+        gen_questions = [response.question for response in responses]
         if all(q == "" for q in gen_questions):
             logger.warning(
                 "Invalid JSON response. Expected dictionary with key 'question'"
@@ -125,7 +137,7 @@ class ResponseRelevancy(MetricWithLLM, MetricWithEmbeddings, SingleTurnMetric):
             score = np.nan
         else:
             cosine_sim = self.calculate_similarity(question, gen_questions)
-            score = cosine_sim.mean() * int(not committal)
+            score = cosine_sim.mean()
 
         return score
 
@@ -138,7 +150,7 @@ class ResponseRelevancy(MetricWithLLM, MetricWithEmbeddings, SingleTurnMetric):
     async def _ascore(self, row: t.Dict, callbacks: Callbacks) -> float:
         assert self.llm is not None, "LLM is not set"
 
-        prompt_input = ResponseRelevanceInput(response=row["response"])
+        prompt_input = ResponseRelevanceInput(answer=row["response"])
         tasks = [
             self.question_generation.generate(
                 data=prompt_input,

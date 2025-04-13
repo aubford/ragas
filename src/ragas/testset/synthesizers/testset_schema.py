@@ -31,7 +31,7 @@ class TestsetSample(BaseSample):
         The name of the synthesizer used to generate this sample.
     """
 
-    eval_sample: t.Union[SingleTurnSample, MultiTurnSample]
+    eval_sample: SingleTurnSample
     synthesizer_name: str
 
 

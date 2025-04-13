@@ -34,7 +34,7 @@ class StatementGeneratorOutput(BaseModel):
 class StatementGeneratorPrompt(
     PydanticPrompt[StatementGeneratorInput, StatementGeneratorOutput]
 ):
-    instruction = "Given a question and an answer, analyze the complexity of each sentence in the answer. Break down each sentence into one or more fully understandable statements. Ensure that no pronouns are used in any statement. Format the outputs in JSON."
+    instruction = "Given a question and an answer, analyze the complexity of each sentence in the answer. Break down each sentence into clear, atomic statements that can be individually verified. Ensure that no pronouns are used in any statement."
     input_model = StatementGeneratorInput
     output_model = StatementGeneratorOutput
     examples = [
@@ -56,9 +56,13 @@ class StatementGeneratorPrompt(
 
 
 class StatementFaithfulnessAnswer(BaseModel):
-    statement: str = Field(..., description="the original statement, word-by-word")
-    reason: str = Field(..., description="the reason of the verdict")
-    verdict: int = Field(..., description="the verdict(0/1) of the faithfulness.")
+    statement: str = Field(
+        ..., description="The original statement, exactly as provided"
+    )
+    reason: str = Field(..., description="The reasoning behind the verdict")
+    verdict: int = Field(
+        ..., description="The faithfulness verdict (0 for unfaithful, 1 for faithful)"
+    )
 
 
 class NLIStatementOutput(BaseModel):
@@ -66,12 +70,16 @@ class NLIStatementOutput(BaseModel):
 
 
 class NLIStatementInput(BaseModel):
-    context: str = Field(..., description="The context of the question")
-    statements: t.List[str] = Field(..., description="The statements to judge")
+    context: str = Field(
+        ..., description="The context containing reference information"
+    )
+    statements: t.List[str] = Field(
+        ..., description="The statements to evaluate for faithfulness"
+    )
 
 
 class NLIStatementPrompt(PydanticPrompt[NLIStatementInput, NLIStatementOutput]):
-    instruction = "Your task is to judge the faithfulness of a series of statements based on a given context. For each statement you must return verdict as 1 if the statement can be directly inferred based on the context or 0 if the statement can not be directly inferred based on the context."
+    instruction = "Evaluate the faithfulness of each statement based on the provided context. For each statement, determine if it can be directly inferred from the context. Assign a verdict of 1 if the statement is faithful (directly supported by the context) or 0 if unfaithful (not supported by the context). Provide clear reasoning for each verdict."
     input_model = NLIStatementInput
     output_model = NLIStatementOutput
     examples = [
