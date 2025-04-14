@@ -42,7 +42,14 @@ class ResponseRelevanceInput(BaseModel):
 class ResponseRelevancePrompt(
     PydanticPrompt[ResponseRelevanceInput, ResponseRelevanceOutput]
 ):
-    instruction = """For the given answer, generate a question that the answer would directly address. Also determine if the answer is noncommittal. Assign a value of 1 if the answer is noncommittal (evasive, vague, ambiguous) or 0 if the answer is committal (direct, specific, clear). Examples of noncommittal answers include "I don't know" or "I'm not sure"."""
+    instruction = """Given the answer provided, perform two tasks:
+
+1. Generate a question that the answer could directly and correctly address.
+
+2. Determine whether the answer is noncommittal. Examples of noncommittal answers are statements that include "I don't know" or "I'm not sure". Label it as:
+   - 1 if the answer is noncommittal (evasive, vague, or ambiguous)
+   - 0 if the answer is committal (direct, specific, and clear)
+"""
     input_model = ResponseRelevanceInput
     output_model = ResponseRelevanceOutput
     examples = [

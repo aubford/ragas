@@ -9,6 +9,11 @@ from ragas.metrics._answer_similarity import (
     SemanticSimilarity,
     answer_similarity,
 )
+from ragas.metrics._answer_relevance_diverse import (
+    AnswerRelevancyDiverse,
+    ResponseRelevancyDiverse,
+    answer_relevancy_diverse,
+)
 from ragas.metrics._aspect_critic import AspectCritic
 from ragas.metrics._bleu_score import BleuScore
 from ragas.metrics._context_entities_recall import (
@@ -103,6 +108,8 @@ __all__ = [
     "AspectCritic",
     "AnswerRelevancy",
     "answer_relevancy",
+    "AnswerRelevancyDiverse",
+    "answer_relevancy_diverse",
     "ContextEntityRecall",
     "context_entity_recall",
     "SummarizationScore",
@@ -128,6 +135,7 @@ __all__ = [
     "AgentGoalAccuracyWithReference",
     "ToolCallAccuracy",
     "ResponseRelevancy",
+    "ResponseRelevancyDiverse",
     "SemanticSimilarity",
     "DistanceMeasure",
     "TopicAdherenceScore",
