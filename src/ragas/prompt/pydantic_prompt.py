@@ -40,6 +40,7 @@ class PydanticPrompt(BasePrompt, t.Generic[InputModel, OutputModel]):
     output_model: t.Type[OutputModel]
     instruction: str
     examples: t.List[t.Tuple[InputModel, OutputModel]] = []
+    temperature: float | None = None
 
     def _generate_instruction(self) -> str:
         return self.instruction
@@ -133,7 +134,7 @@ class PydanticPrompt(BasePrompt, t.Generic[InputModel, OutputModel]):
             llm=llm,
             data=data,
             n=1,
-            temperature=temperature,
+            temperature=temperature or self.temperature,
             stop=stop,
             callbacks=callbacks,
             retries_left=retries_left,
@@ -193,7 +194,7 @@ class PydanticPrompt(BasePrompt, t.Generic[InputModel, OutputModel]):
         resp = await llm.generate(
             prompt_value,
             n=n,
-            temperature=temperature,
+            temperature=temperature or self.temperature,
             stop=stop,
             callbacks=prompt_cb,
             response_format=type_to_response_format_param(self.output_model),

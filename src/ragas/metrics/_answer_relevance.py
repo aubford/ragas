@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import typing as t
+import time
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -42,7 +43,13 @@ class ResponseRelevanceInput(BaseModel):
 class ResponseRelevancePrompt(
     PydanticPrompt[ResponseRelevanceInput, ResponseRelevanceOutput]
 ):
-    instruction = """Given the answer provided, perform two tasks:
+    temperature: float = 0.9
+
+    @property
+    def instruction(self):
+        return f"""[Timestamp: {time.time()}]
+    
+Given the answer provided, perform two tasks:
 
 1. Generate a question that the answer could directly and correctly address.
 
@@ -50,6 +57,7 @@ class ResponseRelevancePrompt(
    - 1 if the answer is noncommittal (evasive, vague, or ambiguous)
    - 0 if the answer is committal (direct, specific, and clear)
 """
+
     input_model = ResponseRelevanceInput
     output_model = ResponseRelevanceOutput
     examples = [

@@ -106,6 +106,12 @@ class ResponseRelevancyDiverse(MetricWithLLM, MetricWithEmbeddings, SingleTurnMe
     Scores the relevancy of the answer according to the given question.
     Answers with incomplete, redundant or unnecessary information is penalized.
     Score can range from 0 to 1 with 1 being the best.
+    
+    This strategy differs from ResponseRelevancy by utilizing a single prompt to request
+    three diverse questions to be generated for the answer and then taking the maximum
+    similarity of the three. This primarily allows for paraphrastic variance. It also 
+    mitigates semantic variance in cases where semantic variance is expected based on the
+    answer.
 
     Attributes
     ----------
