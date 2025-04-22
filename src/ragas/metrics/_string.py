@@ -65,6 +65,7 @@ class NonLLMStringSimilarity(SingleTurnMetric):
         default_factory=lambda: {MetricType.SINGLE_TURN: {"reference", "response"}}
     )
     distance_measure: DistanceMeasure = DistanceMeasure.LEVENSHTEIN
+    skip_tracing: bool = True
 
     def __post_init__(self):
         try:

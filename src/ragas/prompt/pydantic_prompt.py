@@ -184,12 +184,17 @@ class PydanticPrompt(BasePrompt, t.Generic[InputModel, OutputModel]):
         callbacks = callbacks or []
 
         processed_data = self.process_input(data)
-        prompt_rm, prompt_cb = new_group(
-            name=self.name,
-            inputs={"data": processed_data},
-            callbacks=callbacks,
-            metadata={"type": ChainType.RAGAS_PROMPT},
-        )
+        prompt_rm = None  # Ensure prompt_rm is always defined
+        if n > 1:
+            prompt_rm, prompt_cb = new_group(
+                name=self.name,
+                inputs={"data": processed_data},
+                callbacks=callbacks,
+                metadata={"type": ChainType.RAGAS_PROMPT},
+            )
+        else:
+            prompt_cb = callbacks
+
         prompt_value = PromptValue(text=self.to_string(processed_data))
         resp = await llm.generate(
             prompt_value,
@@ -215,11 +220,13 @@ class PydanticPrompt(BasePrompt, t.Generic[InputModel, OutputModel]):
                 processed_output = self.process_output(answer, data)  # type: ignore
                 output_models.append(processed_output)
             except RagasOutputParserException as e:
-                prompt_rm.on_chain_error(error=e)
+                if prompt_rm:
+                    prompt_rm.on_chain_error(error=e)
                 logger.error("Prompt %s failed to parse output: %s", self.name, e)
                 raise e
 
-        prompt_rm.on_chain_end({"output": output_models})
+        if prompt_rm:
+            prompt_rm.on_chain_end({"output": output_models})
         return output_models
 
     def process_input(self, input: InputModel) -> InputModel:

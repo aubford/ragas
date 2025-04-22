@@ -13,6 +13,7 @@ from tqdm import tqdm
 
 from ragas._analytics import EvaluationEvent, _analytics_batcher
 from ragas.callbacks import ChainType, new_group
+from ragas.metrics.utils import new_conditional_group
 from ragas.dataset_schema import MetricAnnotation, MultiTurnSample, SingleTurnSample
 from ragas.executor import is_event_loop_running
 from ragas.losses import BinaryMetricLoss, MSELoss
@@ -79,6 +80,7 @@ class Metric(ABC):
 
     _required_columns: t.Dict[MetricType, t.Set[str]] = field(default_factory=dict)
     name: str = field(default="", repr=True)
+    skip_tracing: bool = False
 
     def __post_init__(self):
         if self.name == "":
@@ -248,7 +250,8 @@ class MetricWithLLM(Metric, PromptMixin):
         if instruction_config.loss is None:
             if self.output_type is None:
                 raise ValueError(
-                    f"Output type for metric '{self.name}' is not defined. Please set the output type in the metric or in the instruction config."
+                    f"Output type for metric '{
+                        self.name}' is not defined. Please set the output type in the metric or in the instruction config."
                 )
             if self.output_type.name == MetricOutputType.BINARY.name:
                 loss_fun = BinaryMetricLoss()
@@ -294,7 +297,8 @@ class MetricWithLLM(Metric, PromptMixin):
             # create a new FewShotPydanticPrompt with these annotations
             if prompt_name not in prompts:
                 raise ValueError(
-                    f"Prompt '{prompt_name}' not found in metric '{self.name}'. Please check the prompt names in the annotation dataset."
+                    f"Prompt '{prompt_name}' not found in metric '{
+                        self.name}'. Please check the prompt names in the annotation dataset."
                 )
             pydantic_prompt = prompts[prompt_name]
             input_model, output_model = (
@@ -471,11 +475,12 @@ class SingleTurnMetric(Metric):
         callbacks = callbacks or []
         # only get the required columns
         sample = self._only_required_columns_single_turn(sample)
-        rm, group_cm = new_group(
+        rm, group_cm = new_conditional_group(
             self.name,
             inputs=sample.to_dict(),
             callbacks=callbacks,
             metadata={"type": ChainType.METRIC},
+            skip_tracing=self.skip_tracing,
         )
         try:
             if is_event_loop_running():
@@ -492,11 +497,11 @@ class SingleTurnMetric(Metric):
                 self._single_turn_ascore(sample=sample, callbacks=group_cm)
             )
         except Exception as e:
-            if not group_cm.ended:
+            if hasattr(group_cm, "ended") and not group_cm.ended:
                 rm.on_chain_error(e)
             raise e
         else:
-            if not group_cm.ended:
+            if hasattr(group_cm, "ended") and not group_cm.ended:
                 rm.on_chain_end({"output": score})
 
         # track the evaluation event
@@ -524,11 +529,12 @@ class SingleTurnMetric(Metric):
         callbacks = callbacks or []
         # only get the required columns
         sample = self._only_required_columns_single_turn(sample)
-        rm, group_cm = new_group(
+        rm, group_cm = new_conditional_group(
             self.name,
             inputs=sample.to_dict(),
             callbacks=callbacks,
             metadata={"type": ChainType.METRIC},
+            skip_tracing=self.skip_tracing,
         )
         try:
             score = await asyncio.wait_for(
@@ -536,11 +542,11 @@ class SingleTurnMetric(Metric):
                 timeout=timeout,
             )
         except Exception as e:
-            if not group_cm.ended:
+            if hasattr(group_cm, "ended") and not group_cm.ended:
                 rm.on_chain_error(e)
             raise e
         else:
-            if not group_cm.ended:
+            if hasattr(group_cm, "ended") and not group_cm.ended:
                 rm.on_chain_end({"output": score})
 
         # track the evaluation event

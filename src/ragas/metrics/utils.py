@@ -1,3 +1,7 @@
+import typing as t
+from ragas.callbacks import new_group
+
+
 def fbeta_score(tp, fp, fn, beta=1.0):
     if tp + fp == 0:
         precision = 0
@@ -20,3 +24,21 @@ def fbeta_score(tp, fp, fn, beta=1.0):
     )
 
     return fbeta
+
+
+def new_conditional_group(
+    *args,
+    skip_tracing: bool = False,
+    **kwargs,
+) -> t.Tuple[t.Any, t.Any]:
+    class MockRunManager:
+        def on_chain_error(self, error, **kwargs):
+            print(f"Error: {error}")
+
+        def on_chain_end(self, outputs, **kwargs):
+            pass
+
+    if skip_tracing is True:
+        return MockRunManager(), []
+    else:
+        return new_group(*args, **kwargs)
