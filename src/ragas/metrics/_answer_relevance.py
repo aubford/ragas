@@ -113,7 +113,7 @@ class ResponseRelevancy(MetricWithLLM, MetricWithEmbeddings, SingleTurnMetric):
     output_type = MetricOutputType.CONTINUOUS
 
     question_generation: PydanticPrompt = ResponseRelevancePrompt()
-    strictness: int = 3
+    strictness: int = 2
 
     def calculate_similarity(self, question: str, generated_questions: list[str]):
         assert (
