@@ -27,7 +27,7 @@ if t.TYPE_CHECKING:
 
 class ResponseRelevanceOutput(BaseModel):
     question: str = Field(
-        description="A question that the given answer directly addresses"
+        description="A generated question that the given answer directly addresses"
     )
     noncommittal: int = Field(
         description="Indicator for whether the answer is committal (0) or noncommittal (1)"
@@ -35,15 +35,13 @@ class ResponseRelevanceOutput(BaseModel):
 
 
 class ResponseRelevanceInput(BaseModel):
-    answer: str = Field(
-        description="The answer to generate a question for and analyze for responsiveness"
-    )
+    answer: str = Field(description="The answer to generate a question for")
 
 
 class ResponseRelevancePrompt(
     PydanticPrompt[ResponseRelevanceInput, ResponseRelevanceOutput]
 ):
-    temperature: float = 0.9
+    temperature: float = 1
 
     @property
     def instruction(self):

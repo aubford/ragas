@@ -12,13 +12,29 @@ def node_meta(node: Node) -> dict[str, t.Any]:
 
 
 def _nodes_are_not_siblings(node_a: Node, node_b: Node) -> bool:
+    """
+    Determine whether two nodes are not siblings based on their metadata.
+
+    Nodes are considered siblings if they share the same 'parent_doc_id' or 'post_id'.
+    If either ID is missing or empty in node_a, the nodes are treated as not siblings to avoid false positives.
+
+    Args:
+        node_a (Node): The first node to compare.
+        node_b (Node): The second node to compare.
+
+    Returns:
+        bool: True if the nodes are not siblings, False otherwise.
+    """
+    # Extract parent_doc_id and post_id from node_a's metadata, defaulting to 'AA' if missing
     parent_doc_id_a = node_meta(node_a).get("parent_doc_id", "AA")
     post_id_a = node_meta(node_a).get("post_id", "AA")
 
+    # If either ID is an empty string, treat nodes as not siblings to avoid false positives
     if parent_doc_id_a == "" or post_id_a == "":
         # avoid false positive when comparing two empty strings
         return True
 
+    # Nodes are not siblings if both parent_doc_id and post_id differ
     return parent_doc_id_a != node_meta(node_b).get(
         "parent_doc_id", "BB"
     ) and post_id_a != node_meta(node_b).get("post_id", "BB")
