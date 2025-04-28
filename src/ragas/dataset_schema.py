@@ -86,6 +86,7 @@ class SingleTurnSample(BaseSample):
         Evaluation rubric for the sample.
     """
 
+    id: t.Optional[str | int] = None
     user_input: t.Optional[str] = None
     retrieved_contexts: t.Optional[t.List[str]] = None
     reference_contexts: t.Optional[t.List[str]] = None
