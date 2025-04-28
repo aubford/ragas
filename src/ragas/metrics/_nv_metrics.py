@@ -53,19 +53,15 @@ class AnswerAccuracy(MetricWithLLM, SingleTurnMetric):
         }
     )
     template_accuracy1 = (
-        "Instruction: You are a world class state of the art assistant for rating "
-        "a User Answer given a Question. The Question is completely answered by the Reference Answer.\n"
-        "Say 4, if User Answer is full contained and equivalent to Reference Answer"
-        "in all terms, topics, numbers, metrics, dates and units.\n"
-        "Say 2, if User Answer is partially contained and almost equivalent to Reference Answer"
-        "in all terms, topics, numbers, metrics, dates and units.\n"
-        "Say 0, if User Answer is not contained in Reference Answer or not accurate in all terms, topics,"
-        "numbers, metrics, dates and units or the User Answer do not answer the question.\n"
+        "Instruction: You are a world class state of the art assistant for rating a User Answer given a Question. The Question is completely answered by the Reference Answer.\n"
+        "Say 4, if User Answer is fully contained and equivalent to Reference Answer in all terms, topics, numbers, metrics, dates and units.\n"
+        "Say 2, if User Answer is partially contained and almost equivalent to Reference Answer in all terms, topics, numbers, metrics, dates and units.\n"
+        "Say 0, if User Answer is not contained in Reference Answer or not accurate in all terms, topics, numbers, metrics, dates and units or the User Answer does not answer the question.\n"
         "Do not explain or justify your rating. Your rating must be only 4, 2 or 0 according to the instructions above.\n"
         "### Question: {query}\n"
         "### {answer0}: {sentence_inference}\n"
-        "### {answer1}: {sentence_true}\n"
-        "The rating is:\n"
+        "### {answer1}: {sentence_true}\n\n"
+        "The rating is: "
     )
     template_accuracy2 = (
         "I will rate the User Answer in comparison to the Reference Answer for a given Question.\n"
@@ -119,6 +115,7 @@ class AnswerAccuracy(MetricWithLLM, SingleTurnMetric):
                     formatted_prompt,
                     n=1,
                     temperature=0.10,
+                    callbacks=callbacks,
                 )
                 resp0 = await req0
                 score_ref_gen = resp0.generations[0][0].text
@@ -139,9 +136,7 @@ class AnswerAccuracy(MetricWithLLM, SingleTurnMetric):
                     )
                 )
                 req1 = self.llm.agenerate_text(
-                    formatted_prompt,
-                    n=1,
-                    temperature=0.10,
+                    formatted_prompt, n=1, temperature=0.10, callbacks=callbacks
                 )
                 resp1 = await req1
                 score_gen_ref = resp1.generations[0][0].text
@@ -165,7 +160,7 @@ class AnswerAccuracy(MetricWithLLM, SingleTurnMetric):
 @dataclass
 class ContextRelevance(MetricWithLLM, SingleTurnMetric):
     """Parameters:
-    Score the relevance of the retrieved contexts be based on the user input.
+    Score the relevance of the retrieved contexts based on the user input.
 
     Input:
         data: list of Dicts with keys: user_input, retrieved_contexts
@@ -186,8 +181,7 @@ class ContextRelevance(MetricWithLLM, SingleTurnMetric):
     )
     template_relevance1 = (
         "### Instructions\n\n"
-        "You are a world class expert designed to evaluate the relevance score of a Context"
-        " in order to answer the Question.\n"
+        "You are a world class expert designed to evaluate the relevance score of a Context in order to answer the Question.\n"
         "Your task is to determine if the Context contains proper information to answer the Question.\n"
         "Do not rely on your previous knowledge about the Question.\n"
         "Use only what is written in the Context and in the Question.\n"
@@ -211,7 +205,7 @@ class ContextRelevance(MetricWithLLM, SingleTurnMetric):
         "* If the Context contains any relevant information to answer the Question, I will respond with a relevance score of 2.\n\n"
         "<Question>\n\n{query}\n\n</Question>\n\n"
         "<Context>\n\n{context}\n\n</Context>\n\n"
-        "Do not try to explain.\n"
+        "Do not try to explain.\n\n"
         "Based on the provided Question and Context, the Relevance score is  ["
     )
     retry = 5  # Number of retries if rating is not in the first 8 tokens.
@@ -259,6 +253,7 @@ class ContextRelevance(MetricWithLLM, SingleTurnMetric):
                     formatted_prompt,
                     n=1,
                     temperature=0.1,
+                    callbacks=callbacks,
                 )
                 resp = await req
                 score0 = self.process_score(resp.generations[0][0].text)
@@ -278,6 +273,7 @@ class ContextRelevance(MetricWithLLM, SingleTurnMetric):
                     formatted_prompt,
                     n=1,
                     temperature=0.1,
+                    callbacks=callbacks,
                 )
                 resp = await req
                 score1 = self.process_score(resp.generations[0][0].text)
@@ -336,6 +332,7 @@ class ResponseGroundedness(MetricWithLLM, SingleTurnMetric):
         "<{response}>\n\n"
         "Analyzing Context and Response, the Groundedness score is "
     )
+    # Turned off: This doesn't work well w/ OpenAI
     template_groundedness2 = (
         "As a specialist in assessing the strength of connections between statements and their given contexts, "
         "I will evaluate the level of support an assertion receives from the provided context. Follow these guidelines:\n\n"
@@ -345,7 +342,7 @@ class ResponseGroundedness(MetricWithLLM, SingleTurnMetric):
         "I will provide a rating of 0, 1, or 2, without any additional information.\n\n"
         "---\n**Context:**\n[{context}]\n\n"
         "**Assertion:**\n[{response}]\n\n"
-        "Do not explain."
+        "Do not explain.\n\n"
         "Based on the provided context and response, the Groundedness score is:"
     )
     retry = 5  # Number of retries if rating is not in the first 8 tokens.
@@ -353,7 +350,7 @@ class ResponseGroundedness(MetricWithLLM, SingleTurnMetric):
     def process_score(self, response):
         for i in [2, 1, 0]:
             if str(i) in response:
-                return i / 2
+                return i
         return np.nan
 
     def average_scores(self, score0, score1):
@@ -381,7 +378,7 @@ class ResponseGroundedness(MetricWithLLM, SingleTurnMetric):
             return 1.0
 
         try:
-            score0 = score1 = np.nan
+            score0 = np.nan
             for retry in range(self.retry):
                 formatted_prompt = StringPromptValue(
                     text=self.template_groundedness1.format(
@@ -393,6 +390,7 @@ class ResponseGroundedness(MetricWithLLM, SingleTurnMetric):
                     formatted_prompt,
                     n=1,
                     temperature=0.1,
+                    callbacks=callbacks,
                 )
                 resp = await req
                 score0 = self.process_score(resp.generations[0][0].text)
@@ -400,27 +398,29 @@ class ResponseGroundedness(MetricWithLLM, SingleTurnMetric):
                     break
                 else:
                     logger.warning(f"Retry: {retry}")
+            score = score0
 
-            for retry in range(self.retry):
-                formatted_prompt = StringPromptValue(
-                    text=self.template_groundedness2.format(
-                        context="\n".join(sample.retrieved_contexts)[:7000],
-                        response=sample.response,
-                    )
-                )
-                req = self.llm.agenerate_text(
-                    formatted_prompt,
-                    n=1,
-                    temperature=0.1,
-                )
-                resp = await req
-                score1 = self.process_score(resp.generations[0][0].text)
-                if score1 == score1:
-                    break
-                else:
-                    logger.warning(f"Retry: {retry}")
+            # for retry in range(self.retry):
+            #     formatted_prompt = StringPromptValue(
+            #         text=self.template_groundedness2.format(
+            #             context="\n".join(sample.retrieved_contexts)[:7000],
+            #             response=sample.response,
+            #         )
+            #     )
+            #     req = self.llm.agenerate_text(
+            #         formatted_prompt,
+            #         n=1,
+            #         temperature=0.1,
+            #         callbacks=callbacks,
+            #     )
+            #     resp = await req
+            #     score1 = self.process_score(resp.generations[0][0].text)
+            #     if score1 == score1:
+            #         break
+            #     else:
+            #         logger.warning(f"Retry: {retry}")
 
-            score = self.average_scores(score0, score1)
+            # score = self.average_scores(score0, score1)
 
         except Exception as e:
             print(

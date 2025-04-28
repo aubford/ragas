@@ -17,10 +17,19 @@ from ragas.metrics.base import (
 )
 from ragas.prompt import PydanticPrompt
 
+import re
+from typing import Sequence
+
+import numpy as np
+from wordfreq import word_frequency
+
 logger = logging.getLogger(__name__)
 
 if t.TYPE_CHECKING:
     from langchain_core.callbacks import Callbacks
+
+_SIF_A: float = 1e-3
+_TOKEN_RE = re.compile(r"[A-Za-z']+")
 
 
 class ResponseRelevanceDiverseOutput(BaseModel):
@@ -43,15 +52,19 @@ class ResponseRelevanceDiversePrompt(
 ):
     instruction = """Given the answer provided, perform two tasks:
 
-# Task 1
-Generate a set of 3–4 queries that the answer could directly and correctly address. Each query in the set must be distinct from the others by either:
+# Task 1: Guess the prompt.
+Your task is to guess the prompt that resulted in the given answer in 3-4 attempts. Only one guess needs to be correct for you to be successful.
+Generate a set of 3–4 prompts that are the most likely to have the highest cosine similarity with the real prompt that resulted in the given answer.
+
+You can leverage the following strategies to create a diverse set of guesses, which will increase your odds of getting one correct:
 - Paraphrastic variance (same meaning, different phrasing), or
-- Semantic variance (different meaning, but still is directly and correctly addressed by the answer).
+- Semantic variance (different meaning, but still addresses all the content in the answer). Semantic variance is useful only when the nature of the answer is broad in scope and permits a wide range of plausible queries.
 
-Allow semantic variance only when the nature of the answer permits a wide range of plausible queries. Avoid introducing semantic drift when the answer is specific or narrow in scope.
-Do not introduce variance for named entities. Named entities should remain intact.
+Follow these guidelines:
+- Do not introduce variance for named entities. Maintain the same set of named entities in each query.
+- Each question should address the content of the *entire* answer as a whole. Obviously, a question that only addresses a part of the answer will never be correct.
 
-# Task 2
+# Task 2: Is the answer noncommittal?
 Determine whether the answer is noncommittal. Examples of noncommittal answers are statements that include "I don't know" or "I'm not sure". Label it as:
    - 1 if the answer is noncommittal (evasive, vague, or ambiguous)
    - 0 if the answer is committal (direct, specific, and clear)
@@ -137,7 +150,14 @@ class ResponseRelevancyDiverse(MetricWithLLM, MetricWithEmbeddings, SingleTurnMe
 
     question_generation: PydanticPrompt = ResponseRelevanceDiversePrompt()
 
-    def calculate_similarity(self, question: str, generated_questions: list[str]):
+    def get_question_embeddings(
+        self, question: str, generated_questions: list[str]
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Generate embeddings for the question and generated questions.
+        Returns:
+            Tuple of (question_vec, gen_question_vec)
+        """
         assert (
             self.embeddings is not None
         ), f"Error: '{self.name}' requires embeddings to be set."
@@ -145,6 +165,16 @@ class ResponseRelevancyDiverse(MetricWithLLM, MetricWithEmbeddings, SingleTurnMe
         gen_question_vec = np.asarray(
             self.embeddings.embed_documents(generated_questions)
         ).reshape(len(generated_questions), -1)
+        return question_vec, gen_question_vec
+
+    def calculate_similarity(
+        self, question_vec: np.ndarray, gen_question_vec: np.ndarray
+    ) -> np.ndarray:
+        """
+        Calculate cosine similarity between the question embedding and generated question embeddings.
+        Returns:
+            Array of cosine similarities.
+        """
         norm = np.linalg.norm(gen_question_vec, axis=1) * np.linalg.norm(
             question_vec, axis=1
         )
@@ -154,6 +184,64 @@ class ResponseRelevancyDiverse(MetricWithLLM, MetricWithEmbeddings, SingleTurnMe
             )
             / norm
         )
+
+    def _sentence_probability(self, sentence: str) -> float:
+        """Return average word probability for a sentence using the `wordfreq` corpus."""
+        tokens = _TOKEN_RE.findall(sentence.lower())
+        if not tokens:
+            return 1.0  # fall back to high probability for empty input
+        freqs = [word_frequency(tok, "en") for tok in tokens]
+        return float(np.mean(freqs))
+
+    def combine_embeddings(
+        self, texts: Sequence[str], embeddings: np.ndarray
+    ) -> np.ndarray:
+        """
+        Combine component-question embeddings into a single vector using
+        Smooth Inverse Frequency (SIF) weights derived from the `wordfreq` list.
+
+        This is an attempt to counter the LLM's occasional tendency to cheat its directive
+        to generate variance by just chopping a single question into pieces.
+
+        Parameters
+        ----------
+        texts
+            Component question texts in the same order as `embeddings`.
+        embeddings
+            Pre-computed embeddings as a 2D NumPy array (n, d).
+
+        Returns
+        -------
+        np.ndarray
+            2D array of shape (1, d) representing the combined semantic content embedding.
+        """
+        if len(texts) != embeddings.shape[0]:
+            raise ValueError("`texts` and `embeddings` must have the same length")
+
+        E = embeddings.astype(np.float64)
+        n, _ = E.shape
+
+        # --- Smooth Inverse Frequency weights ----------------------------------
+        probs = np.array(
+            [self._sentence_probability(t) for t in texts], dtype=np.float64
+        )
+        weights = _SIF_A / (_SIF_A + probs)  # a / (a + p(w))
+        weights /= weights.sum()  # normalise to sum to 1
+
+        # --- Weighted mean -----------------------------------------------------
+        v = (weights[:, None] * E).sum(axis=0)
+
+        # --- Remove first principal component ----------------------------------
+        E_centered = E - E.mean(axis=0, keepdims=True)
+        _, _, vh = np.linalg.svd(E_centered, full_matrices=False)
+        pc1 = vh[0]
+        v -= pc1 * np.dot(pc1, v)
+
+        # --- L2 normalisation ---------------------------------------------------
+        norm = np.linalg.norm(v)
+        if norm == 0.0:
+            raise ValueError("Resultant vector has zero magnitude")
+        return (v / norm).reshape(1, -1)  # 2D array (1, d)
 
     def _calculate_score(
         self, response: ResponseRelevanceDiverseOutput, row: t.Dict
@@ -168,7 +256,17 @@ class ResponseRelevancyDiverse(MetricWithLLM, MetricWithEmbeddings, SingleTurnMe
             logger.warning("Invalid response. No valid questions were generated.")
             score = np.nan
         else:
-            cosine_sim = self.calculate_similarity(question, gen_questions)
+            question_vec, gen_question_vec = self.get_question_embeddings(
+                question, gen_questions
+            )
+            aggregate_embedding = self.combine_embeddings(
+                gen_questions, gen_question_vec
+            )
+            cosine_sim = self.calculate_similarity(
+                question_vec,
+                np.vstack([gen_question_vec, aggregate_embedding]),
+            )
+
             # Use max similarity instead of mean
             score = cosine_sim.max()
 
@@ -203,3 +301,40 @@ class AnswerRelevancyDiverse(ResponseRelevancyDiverse):
 
 
 answer_relevancy_diverse = AnswerRelevancyDiverse()
+
+
+if __name__ == "__main__":
+    from ragas.embeddings.base import (
+        embedding_factory,
+    )
+
+    instance = ResponseRelevancyDiverse(embeddings=embedding_factory())
+
+    # user_input = "What troubleshooting steps and considerations should a technician take when experiencing a drop in carrier aggregation (CA) bands on a Peplink MAX BR1 5G Pro or BR2 5G Pro across multiple carriers, and what factors could be responsible for this behavior?"
+    # response = ResponseRelevanceDiverseOutput(
+    #     queries=[
+    #         "What troubleshooting steps should be taken when carrier aggregation drops occur on Peplink MAX BR1 5G Pro and BR2 5G Pro devices?",
+    #         "How can a technician diagnose issues related to carrier aggregation reduction on Peplink 5G Pro devices across different carriers?",
+    #         "What factors influence the occurrence of carrier aggregation drops on Peplink network devices?",
+    #         "What are common reasons for carrier aggregation not functioning properly on Peplink MAX BR1 and BR2 devices?",
+    #     ],
+    #     noncommittal=0,
+    # )
+
+    # score = instance._calculate_score(response, {"user_input": user_input})
+    # print(score)
+
+    user_input = "How can a technician monitor and interpret the power supply input voltage and GPIO status on a Peplink router, and what steps should they take if voltage-related instability or restarts occur?"
+    # Reference for 99%: How can a technician monitor power supply input voltage and GPIO status on a Peplink router, and what steps should be taken if voltage-related instability or restarts occur?
+    response = ResponseRelevanceDiverseOutput(
+        queries=[
+            "How can a technician monitor power supply input voltage and GPIO status on a Peplink router?",
+            "What steps should be taken if a Peplink router experiences voltage-related instability or spontaneous restarts?",
+            "How do you configure and use GPIO pins on Peplink routers for voltage monitoring?",
+            "What are recommended practices to ensure stable power supply and prevent reboots on Peplink routers?",
+        ],
+        noncommittal=0,
+    )
+
+    score = instance._calculate_score(response, {"user_input": user_input})
+    print(score)
