@@ -41,7 +41,7 @@ class ResponseRelevanceInput(BaseModel):
 class ResponseRelevancePrompt(
     PydanticPrompt[ResponseRelevanceInput, ResponseRelevanceOutput]
 ):
-    temperature: float = 1
+    temperature: float = 1.5
 
     @property
     def instruction(self):

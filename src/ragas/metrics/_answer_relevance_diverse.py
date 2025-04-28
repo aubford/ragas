@@ -43,13 +43,16 @@ class ResponseRelevanceDiversePrompt(
 ):
     instruction = """Given the answer provided, perform two tasks:
 
-1. Generate a set of 3–5 queries that the answer could directly and correctly address. Each query in the set must be distinct from the others by either:
+# Task 1
+Generate a set of 3–4 queries that the answer could directly and correctly address. Each query in the set must be distinct from the others by either:
 - Paraphrastic variance (same meaning, different phrasing), or
 - Semantic variance (different meaning, but still is directly and correctly addressed by the answer).
 
 Allow semantic variance only when the nature of the answer permits a wide range of plausible queries. Avoid introducing semantic drift when the answer is specific or narrow in scope.
+Do not introduce variance for named entities. Named entities should remain intact.
 
-2. Determine whether the answer is noncommittal. Examples of noncommittal answers are statements that include "I don't know" or "I'm not sure". Label it as:
+# Task 2
+Determine whether the answer is noncommittal. Examples of noncommittal answers are statements that include "I don't know" or "I'm not sure". Label it as:
    - 1 if the answer is noncommittal (evasive, vague, or ambiguous)
    - 0 if the answer is committal (direct, specific, and clear)
 """
@@ -76,10 +79,9 @@ Allow semantic variance only when the nature of the answer permits a wide range 
             ResponseRelevanceDiverseOutput(
                 queries=[
                     "How can you optimize a setup involving multiple 4x4 MIMO antennas and what are the considerations for using a single antenna for two modems? What are the recommended spacing and placement strategies for these antennas?",
-                    "Explain the considerations for optimizing a 4x4 MIMO antenna setup. Take into consideration both single and multiple antennae setups. Discuss the appropriate spacing considerations in detail along with other considerations.",
-                    "What steps should you take to optimize performance for a 4x4 MIMO antenna setup for multiple antennas? Who do you need to do to reduce interference? Also discuss the same for a single antenna setup. What situations could cause interference in that case and why?",
-                    "Discuss MIMO antenna setups for two scenarios. First, for a single antenna setup serving two modems. Second, for a multiple antenna setup. What pitfalls should be avoided in each case, specifically with regards to interference, placement, or SIMs? Explain the technical root causes of those pitfalls.",
-                    "My upload speeds are painfully slow with my MIMO antenna setup. What are some obvious things I should check to make sure I'm not doing something wrong?",
+                    "What steps should you take to optimize performance for a 4x4 MIMO antenna setup for multiple antennas? What do you need to do to reduce interference? Also discuss the same for a single antenna setup. What situations could cause interference in that case and why?",
+                    "Discuss 4x4 MIMO antenna setups for two scenarios. First, for a single antenna setup serving two modems. Second, for a multiple antenna setup. What pitfalls should be avoided in each case, specifically with regards to interference, placement, or SIMs? Explain the technical root causes of those pitfalls.",
+                    "My upload speeds are painfully slow with my 4x4 MIMO antenna setup. What are some obvious things I should check to make sure I'm not doing something wrong?",
                 ],
                 noncommittal=0,
             ),
@@ -106,10 +108,10 @@ class ResponseRelevancyDiverse(MetricWithLLM, MetricWithEmbeddings, SingleTurnMe
     Scores the relevancy of the answer according to the given question.
     Answers with incomplete, redundant or unnecessary information is penalized.
     Score can range from 0 to 1 with 1 being the best.
-    
+
     This strategy differs from ResponseRelevancy by utilizing a single prompt to request
     three diverse questions to be generated for the answer and then taking the maximum
-    similarity of the three. This primarily allows for paraphrastic variance. It also 
+    similarity of the three. This primarily allows for paraphrastic variance. It also
     mitigates semantic variance in cases where semantic variance is expected based on the
     answer.
 
