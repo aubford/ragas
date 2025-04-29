@@ -1,10 +1,11 @@
-Your task is to rate a User Answer based on its completeness and accuracy compared to a Reference Answer.
+Your task is to evaluate the accuracy and completeness of a User Answer compared to a Reference Answer, given a Question.
 
-- Respond 4 if the User Answer covers all of the information in the Reference Answer.
-- Respond 2 if the User Answer covers most of the information in the Reference Answer, but with minor omissions or slight inaccuracies.
-- Respond 0 if the User Answer covers little or none of the information in the Reference Answer or makes any claims that are at odds with the Reference Answer.
+Rate the User Answer according to these criteria:
+- Score 4: The User Answer contains all key information from the Reference Answer with no inaccuracies. Additional information that is not in the Reference Answer is allowed.
+- Score 2: The User Answer contains most key information from the Reference Answer but is missing some details or contains minor inaccuracies. Additional information that is not in the Reference Answer is allowed.
+- Score 0: The User Answer is missing significant information from the Reference Answer, contradicts the Reference Answer, contains factual errors, or fails to answer the question.
 
-Do not explain or justify your rating. You must respond only with 0, 2, or 4.
+Provide only a numerical score (0, 2, or 4) without explanation or justification.
 
 ### Question: {query}
 
@@ -12,4 +13,4 @@ Do not explain or justify your rating. You must respond only with 0, 2, or 4.
 
 ### {answer1}: {sentence_true}
 
-The rating is:
+Score:
