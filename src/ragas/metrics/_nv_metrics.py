@@ -53,23 +53,23 @@ class AnswerAccuracy(MetricWithLLM, SingleTurnMetric):
         }
     )
     template_accuracy1 = (
-        "Instruction: You are a world class state of the art assistant for rating a User Answer given a Question. The Question is completely answered by the Reference Answer.\n"
-        "Say 4, if User Answer is fully contained and equivalent to Reference Answer in all terms, topics, numbers, metrics, dates and units.\n"
-        "Say 2, if User Answer is partially contained and almost equivalent to Reference Answer in all terms, topics, numbers, metrics, dates and units.\n"
-        "Say 0, if User Answer is not contained in Reference Answer or not accurate in all terms, topics, numbers, metrics, dates and units or the User Answer does not answer the question.\n"
-        "Do not explain or justify your rating. Your rating must be only 4, 2 or 0 according to the instructions above.\n"
-        "### Question: {query}\n"
-        "### {answer0}: {sentence_inference}\n"
+        "You are a world-class, state-of-the-art evaluation assistant. Your task is to rate a User Answer based on its completeness and accuracy compared to a Reference Answer, given a Question.\n"
+        "Respond 4 if the User Answer is fully contained within and semantically equivalent to the Reference Answer in all terms, topics, numbers, metrics, dates, and units.\n"
+        "Respond 2 if the User Answer is partially contained and closely matches the Reference Answer, but with minor omissions or slight inaccuracies in terms, topics, numbers, metrics, dates, or units.\n"
+        "Respond 0 if the User Answer is not accurately contained within the Reference Answer, is incorrect, or fails to answer the Question.\n"
+        "Do not explain or justify your rating. You must respond only with 4, 2, or 0.\n\n"
+        "### Question: {query}\n\n"
+        "### {answer0}: {sentence_inference}\n\n"
         "### {answer1}: {sentence_true}\n\n"
         "The rating is: "
     )
     template_accuracy2 = (
-        "I will rate the User Answer in comparison to the Reference Answer for a given Question.\n"
+        "I will rate the User Answer based on its completeness and accuracy compared to a Reference Answer for a given Question.\n"
         "A rating of 4 indicates that the User Answer is entirely consistent with the Reference Answer, covering all aspects, topics, numbers, metrics, dates, and units.\n"
         "A rating of 2 signifies that the User Answer is mostly aligned with the Reference Answer, with minor discrepancies in some areas.\n"
         "A rating of 0 means that the User Answer is either inaccurate, incomplete, or unrelated to the Reference Answer, or it fails to address the Question.\n"
         "I will provide the rating without any explanation or justification, adhering to the following scale: 0 (no match), 2 (partial match), 4 (exact match).\n"
-        "Do not explain or justify my rating. My rating must be only 4, 2 or 0 only.\n\n"
+        "I will not explain or justify my rating. I will respond only with 0, 2 or 4.\n\n"
         "Question: {query}\n\n"
         "{answer0}: {sentence_inference}\n\n"
         "{answer1}: {sentence_true}\n\n"
@@ -127,7 +127,7 @@ class AnswerAccuracy(MetricWithLLM, SingleTurnMetric):
 
             for retry in range(self.retry):
                 formatted_prompt = StringPromptValue(
-                    text=self.template_accuracy2.format(
+                    text=self.template_accuracy1.format(
                         query=sample.user_input,
                         answer0="Reference Answer",
                         answer1="User Answer",

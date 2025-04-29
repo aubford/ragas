@@ -43,13 +43,9 @@ class ResponseRelevancePrompt(
 ):
     temperature: float = 1.5
 
-    @property
-    def instruction(self):
-        return f"""[Timestamp: {time.time()}]
-    
-Given the answer provided, perform two tasks:
+    instruction = """Given the provided answer, perform two tasks:
 
-1. Generate a question that the answer could directly and correctly address.
+1. Guess the question that was asked to result in the provided answer.
 
 2. Determine whether the answer is noncommittal. Examples of noncommittal answers are statements that include "I don't know" or "I'm not sure". Label it as:
    - 1 if the answer is noncommittal (evasive, vague, or ambiguous)
@@ -111,7 +107,7 @@ class ResponseRelevancy(MetricWithLLM, MetricWithEmbeddings, SingleTurnMetric):
     output_type = MetricOutputType.CONTINUOUS
 
     question_generation: PydanticPrompt = ResponseRelevancePrompt()
-    strictness: int = 2
+    strictness: int = 1
 
     def calculate_similarity(self, question: str, generated_questions: list[str]):
         assert (

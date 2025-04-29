@@ -61,7 +61,7 @@ You can leverage the following strategies to create a diverse set of guesses, wh
 - Semantic variance (different meaning, but still addresses all the content in the answer). Semantic variance is useful only when the nature of the answer is broad in scope and permits a wide range of plausible queries.
 
 Follow these guidelines:
-- Do not introduce variance for named entities. Maintain the same set of named entities in each query.
+- Do not introduce variance for named entities. Maintain the full set of named entities from the answer in each query.
 - Each question should address the content of the *entire* answer as a whole. Obviously, a question that only addresses a part of the answer will never be correct.
 
 # Task 2: Is the answer noncommittal?
@@ -371,13 +371,13 @@ if __name__ == "__main__":
     print(score)
 
     # USING THE NEW PROMPT WORKS GREAT!
-    user_input = "How can a technician monitor and interpret the power supply input voltage and GPIO status on a Peplink router, and what steps should they take if voltage-related instability or restarts occur?"
+    user_input = "How do you achieve reliable, high-bandwidth live video streaming from a mobile camera crew using multiple 3G/4G LTE connections, and what are the critical configuration steps and considerations for SpeedFusion bonding with Pepwave MAX On-The-Go and Peplink Balance devices?"
     response = ResponseRelevanceDiverseOutput(
         queries=[
-            "How can a technician monitor power supply input voltage and GPIO status on a Peplink router, and what steps should be taken if voltage-related instability or spontaneous restarts occur?",
-            "Explain the methods for monitoring power input voltage and GPIO status on Peplink routers, including API usage and configuration, and describe recommended troubleshooting steps for power-related instability or reboot issues.",
-            "What are the best practices for monitoring and interpreting power supply voltage and GPIO signals on Peplink routers, and how should a technician respond to voltage instability or unexpected restarts?",
-            "Describe how to check power supply voltage and GPIO status on a Peplink router and outline the recommended actions if the router experiences instability or restarts due to power issues.",
+            "How can I set up reliable high-bandwidth live video streaming from a mobile camera crew using multiple 3G/4G LTE connections with Pepwave and Peplink devices, and what are the key configuration steps involved?",
+            "What is the recommended approach for achieving resilient live video streaming over multiple cellular links with Pepwave and Peplink devices, including device setup, bonding technology, and critical considerations?",
+            "Can you explain the best practices for using SpeedFusion bonding with Pepwave MAX On-The-Go and Peplink Balance routers to enable high-quality live video streaming from a mobile camera crew over multiple 3G/4G LTE connections?",
+            "What setup and configuration are necessary to use Pepwave and Peplink devices for bonding multiple cellular connections to support live video streaming from a mobile crew, and what are the important factors to consider?",
         ],
         noncommittal=0,
     )
