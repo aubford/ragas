@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 if t.TYPE_CHECKING:
     from langchain_core.callbacks import Callbacks
 
-_SIF_A: float = 1e-3
+_SIF_A: float = 5e-3
 _TOKEN_RE = re.compile(r"[A-Za-z']+")
 
 
@@ -243,6 +243,35 @@ class ResponseRelevancyDiverse(MetricWithLLM, MetricWithEmbeddings, SingleTurnMe
             raise ValueError("Resultant vector has zero magnitude")
         return (v / norm).reshape(1, -1)  # 2D array (1, d)
 
+    def combine_embeddings_concat(self, texts: Sequence[str]) -> np.ndarray:
+        """
+        Combine all the questions into a single synthetic question. An alternative attempt to
+        counter the LLM's tendency to cheat its directive to generate variance by just chopping
+        a single question into pieces. Seems to work better than SIF when cheating
+        is egregious.
+
+        Parameters
+        ----------
+        texts
+            Component question strings in their original order.
+
+        Returns
+        -------
+        np.ndarray
+            2‑D array of shape (1, d) containing a unit‑norm embedding.
+        """
+        assert (
+            self.embeddings is not None
+        ), f"Error: '{self.name}' requires embeddings to be set."
+        synthetic_question: str = " ".join(filter(None, texts))
+        vec = np.asarray(
+            self.embeddings.embed_query(synthetic_question), dtype=np.float64
+        )
+        norm = np.linalg.norm(vec)
+        if norm == 0.0:
+            raise ValueError("Zero‑norm embedding generated for synthetic question")
+        return (vec / norm).reshape(1, -1)
+
     def _calculate_score(
         self, response: ResponseRelevanceDiverseOutput, row: t.Dict
     ) -> float:
@@ -262,9 +291,11 @@ class ResponseRelevancyDiverse(MetricWithLLM, MetricWithEmbeddings, SingleTurnMe
             aggregate_embedding = self.combine_embeddings(
                 gen_questions, gen_question_vec
             )
+            # Two strategies to combine embeddings in case the model cheats
+            concat_embedding = self.combine_embeddings_concat(gen_questions)
             cosine_sim = self.calculate_similarity(
                 question_vec,
-                np.vstack([gen_question_vec, aggregate_embedding]),
+                np.vstack([gen_question_vec, aggregate_embedding, concat_embedding]),
             )
 
             # Use max similarity instead of mean
@@ -302,7 +333,7 @@ class AnswerRelevancyDiverse(ResponseRelevancyDiverse):
 
 answer_relevancy_diverse = AnswerRelevancyDiverse()
 
-
+# TESTING
 if __name__ == "__main__":
     from ragas.embeddings.base import (
         embedding_factory,
@@ -310,19 +341,19 @@ if __name__ == "__main__":
 
     instance = ResponseRelevancyDiverse(embeddings=embedding_factory())
 
-    # user_input = "What troubleshooting steps and considerations should a technician take when experiencing a drop in carrier aggregation (CA) bands on a Peplink MAX BR1 5G Pro or BR2 5G Pro across multiple carriers, and what factors could be responsible for this behavior?"
-    # response = ResponseRelevanceDiverseOutput(
-    #     queries=[
-    #         "What troubleshooting steps should be taken when carrier aggregation drops occur on Peplink MAX BR1 5G Pro and BR2 5G Pro devices?",
-    #         "How can a technician diagnose issues related to carrier aggregation reduction on Peplink 5G Pro devices across different carriers?",
-    #         "What factors influence the occurrence of carrier aggregation drops on Peplink network devices?",
-    #         "What are common reasons for carrier aggregation not functioning properly on Peplink MAX BR1 and BR2 devices?",
-    #     ],
-    #     noncommittal=0,
-    # )
+    user_input = "What troubleshooting steps and considerations should a technician take when experiencing a drop in carrier aggregation (CA) bands on a Peplink MAX BR1 5G Pro or BR2 5G Pro across multiple carriers, and what factors could be responsible for this behavior?"
+    response = ResponseRelevanceDiverseOutput(
+        queries=[
+            "What troubleshooting steps should be taken when carrier aggregation drops occur on Peplink MAX BR1 5G Pro and BR2 5G Pro devices?",
+            "How can a technician diagnose issues related to carrier aggregation reduction on Peplink 5G Pro devices across different carriers?",
+            "What factors influence the occurrence of carrier aggregation drops on Peplink network devices?",
+            "What are common reasons for carrier aggregation not functioning properly on Peplink MAX BR1 and BR2 devices?",
+        ],
+        noncommittal=0,
+    )
 
-    # score = instance._calculate_score(response, {"user_input": user_input})
-    # print(score)
+    score = instance._calculate_score(response, {"user_input": user_input})
+    print(score)
 
     user_input = "How can a technician monitor and interpret the power supply input voltage and GPIO status on a Peplink router, and what steps should they take if voltage-related instability or restarts occur?"
     # Reference for 99%: How can a technician monitor power supply input voltage and GPIO status on a Peplink router, and what steps should be taken if voltage-related instability or restarts occur?
@@ -332,6 +363,21 @@ if __name__ == "__main__":
             "What steps should be taken if a Peplink router experiences voltage-related instability or spontaneous restarts?",
             "How do you configure and use GPIO pins on Peplink routers for voltage monitoring?",
             "What are recommended practices to ensure stable power supply and prevent reboots on Peplink routers?",
+        ],
+        noncommittal=0,
+    )
+
+    score = instance._calculate_score(response, {"user_input": user_input})
+    print(score)
+
+    # USING THE NEW PROMPT WORKS GREAT!
+    user_input = "How can a technician monitor and interpret the power supply input voltage and GPIO status on a Peplink router, and what steps should they take if voltage-related instability or restarts occur?"
+    response = ResponseRelevanceDiverseOutput(
+        queries=[
+            "How can a technician monitor power supply input voltage and GPIO status on a Peplink router, and what steps should be taken if voltage-related instability or spontaneous restarts occur?",
+            "Explain the methods for monitoring power input voltage and GPIO status on Peplink routers, including API usage and configuration, and describe recommended troubleshooting steps for power-related instability or reboot issues.",
+            "What are the best practices for monitoring and interpreting power supply voltage and GPIO signals on Peplink routers, and how should a technician respond to voltage instability or unexpected restarts?",
+            "Describe how to check power supply voltage and GPIO status on a Peplink router and outline the recommended actions if the router experiences instability or restarts due to power issues.",
         ],
         noncommittal=0,
     )
