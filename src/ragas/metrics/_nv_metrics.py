@@ -10,8 +10,11 @@ from langchain_core.prompt_values import StringPromptValue
 
 from ragas.dataset_schema import SingleTurnSample
 from ragas.metrics.base import MetricType, MetricWithLLM, SingleTurnMetric
+from ragas.metrics.prompts import load_prompts
 
 logger = logging.getLogger(__name__)
+
+PROMPTS = load_prompts()
 
 
 @dataclass
@@ -52,29 +55,6 @@ class AnswerAccuracy(MetricWithLLM, SingleTurnMetric):
             },
         }
     )
-    template_accuracy1 = (
-        "You are a world-class, state-of-the-art evaluation assistant. Your task is to rate a User Answer based on its completeness and accuracy compared to a Reference Answer, given a Question.\n"
-        "Respond 4 if the User Answer is fully contained within and semantically equivalent to the Reference Answer in all terms, topics, numbers, metrics, dates, and units.\n"
-        "Respond 2 if the User Answer is partially contained and closely matches the Reference Answer, but with minor omissions or slight inaccuracies in terms, topics, numbers, metrics, dates, or units.\n"
-        "Respond 0 if the User Answer is not accurately contained within the Reference Answer, is incorrect, or fails to answer the Question.\n"
-        "Do not explain or justify your rating. You must respond only with 4, 2, or 0.\n\n"
-        "### Question: {query}\n\n"
-        "### {answer0}: {sentence_inference}\n\n"
-        "### {answer1}: {sentence_true}\n\n"
-        "The rating is: "
-    )
-    template_accuracy2 = (
-        "I will rate the User Answer based on its completeness and accuracy compared to a Reference Answer for a given Question.\n"
-        "A rating of 4 indicates that the User Answer is entirely consistent with the Reference Answer, covering all aspects, topics, numbers, metrics, dates, and units.\n"
-        "A rating of 2 signifies that the User Answer is mostly aligned with the Reference Answer, with minor discrepancies in some areas.\n"
-        "A rating of 0 means that the User Answer is either inaccurate, incomplete, or unrelated to the Reference Answer, or it fails to address the Question.\n"
-        "I will provide the rating without any explanation or justification, adhering to the following scale: 0 (no match), 2 (partial match), 4 (exact match).\n"
-        "I will not explain or justify my rating. I will respond only with 0, 2 or 4.\n\n"
-        "Question: {query}\n\n"
-        "{answer0}: {sentence_inference}\n\n"
-        "{answer1}: {sentence_true}\n\n"
-        "Rating: "
-    )
     retry = 5  # Number of retries if rating is not in the first 8 tokens.
 
     def process_score(self, response):
@@ -103,7 +83,7 @@ class AnswerAccuracy(MetricWithLLM, SingleTurnMetric):
             score_ref_gen = score_gen_ref = np.nan
             for retry in range(self.retry):
                 formatted_prompt = StringPromptValue(
-                    text=self.template_accuracy1.format(
+                    text=PROMPTS["nv_answer_accuracy"].format(
                         query=sample.user_input,
                         answer0="User Answer",
                         answer1="Reference Answer",
@@ -127,7 +107,7 @@ class AnswerAccuracy(MetricWithLLM, SingleTurnMetric):
 
             for retry in range(self.retry):
                 formatted_prompt = StringPromptValue(
-                    text=self.template_accuracy1.format(
+                    text=PROMPTS["nv_answer_accuracy"].format(
                         query=sample.user_input,
                         answer0="Reference Answer",
                         answer1="User Answer",
