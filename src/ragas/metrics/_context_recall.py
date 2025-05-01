@@ -190,7 +190,6 @@ class NonLLMContextRecall(SingleTurnMetric):
     _distance_measure: SingleTurnMetric = field(
         default_factory=lambda: NonLLMStringSimilarity()
     )
-    threshold: float = 0.5
 
     def init(self, run_config: RunConfig) -> None: ...
 
@@ -207,32 +206,49 @@ class NonLLMContextRecall(SingleTurnMetric):
     async def _single_turn_ascore(
         self, sample: SingleTurnSample, callbacks: Callbacks
     ) -> float:
+        """For each reference context, find the best matching retrieved context. Try both main content
+        and summary for each reference document. Return the similarity score of the best match.
+        Don't collapse to a binary score because we aren't looking for exact document match but overall
+        amount of matching information.
+        """
         retrieved_contexts = sample.retrieved_contexts
         reference_contexts = sample.reference_contexts
         assert retrieved_contexts is not None, "retrieved_contexts is empty"
         assert reference_contexts is not None, "reference_contexts is empty"
 
         scores = []
-        for ref in reference_contexts:
-            scores.append(
-                max(
+        for ref, summary in reference_contexts:
+            assert ref, "reference is empty"
+
+            max_vs_ref = max(
+                [
+                    await self.distance_measure.single_turn_ascore(
+                        SingleTurnSample(reference=rc, response=ref), callbacks
+                    )
+                    for rc in retrieved_contexts
+                ]
+            )
+            if summary:
+                max_vs_summary = max(
                     [
                         await self.distance_measure.single_turn_ascore(
-                            SingleTurnSample(reference=rc, response=ref), callbacks
+                            SingleTurnSample(reference=rc, response=summary), callbacks
                         )
                         for rc in retrieved_contexts
                     ]
                 )
-            )
+            else:
+                max_vs_summary = 0
+
+            scores.append(max(max_vs_ref, max_vs_summary))
         return self._compute_score(scores)
 
     async def _ascore(self, row: t.Dict, callbacks: Callbacks) -> float:
         return await self._single_turn_ascore(SingleTurnSample(**row), callbacks)
 
     def _compute_score(self, verdict_list: t.List[float]) -> float:
-        response = [1 if score > self.threshold else 0 for score in verdict_list]
-        denom = len(response)
-        numerator = sum(response)
+        denom = len(verdict_list)
+        numerator = sum(verdict_list)
         score = numerator / denom if denom > 0 else np.nan
         return score
 

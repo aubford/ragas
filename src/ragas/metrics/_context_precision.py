@@ -202,7 +202,6 @@ class NonLLMContextPrecisionWithReference(SingleTurnMetric):
     distance_measure: SingleTurnMetric = field(
         default_factory=lambda: NonLLMStringSimilarity()
     )
-    threshold: float = 0.5
 
     def __post_init__(self):
         if isinstance(self.distance_measure, MetricWithLLM):
@@ -219,6 +218,11 @@ class NonLLMContextPrecisionWithReference(SingleTurnMetric):
     async def _single_turn_ascore(
         self, sample: SingleTurnSample, callbacks: Callbacks
     ) -> float:
+        """For each retrieved context, find the best matching reference context. Try both main content
+        and summary for each reference document. Return the similarity score of the best match.
+        Don't collapse to a binary score because we aren't looking for exact doc match but overall
+        amount of matching information.
+        """
         retrieved_contexts = sample.retrieved_contexts
         reference_contexts = sample.reference_contexts
         assert retrieved_contexts is not None, "retrieved_contexts is empty"
@@ -226,17 +230,22 @@ class NonLLMContextPrecisionWithReference(SingleTurnMetric):
 
         scores = []
         for rc in retrieved_contexts:
-            scores.append(
-                max(
-                    [
-                        await self.distance_measure.single_turn_ascore(
-                            SingleTurnSample(reference=rc, response=ref), callbacks
-                        )
-                        for ref in reference_contexts
-                    ]
+            max_scores = []
+            for ref, summary in reference_contexts:
+                assert ref, "reference is empty"
+                
+                max_vs_ref = await self.distance_measure.single_turn_ascore(
+                    SingleTurnSample(reference=rc, response=ref), callbacks
                 )
-            )
-        scores = [1 if score >= self.threshold else 0 for score in scores]
+                if summary:
+                    max_vs_summary = await self.distance_measure.single_turn_ascore(
+                        SingleTurnSample(reference=rc, response=summary), callbacks
+                    )
+                else:
+                    max_vs_summary = 0
+                    
+                max_scores.append(max(max_vs_ref, max_vs_summary))
+            scores.append(max(max_scores))
         return self._calculate_average_precision(scores)
 
     def _calculate_average_precision(self, verdict_list: t.List[int]) -> float:

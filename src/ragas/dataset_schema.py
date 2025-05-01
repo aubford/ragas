@@ -89,7 +89,7 @@ class SingleTurnSample(BaseSample):
     id: t.Optional[str | int] = None
     user_input: t.Optional[str] = None
     retrieved_contexts: t.Optional[t.List[str]] = None
-    reference_contexts: t.Optional[t.List[str]] = None
+    reference_contexts: t.Optional[t.List[tuple[str,str]]] = None
     response: t.Optional[str] = None
     multi_responses: t.Optional[t.List[str]] = None
     reference: t.Optional[str] = None
