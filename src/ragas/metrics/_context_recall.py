@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from pydantic import BaseModel
+from scipy.spatial.distance import cosine
 
 from ragas.dataset_schema import SingleTurnSample
 from ragas.metrics._string import DistanceMeasure, NonLLMStringSimilarity
@@ -15,6 +16,7 @@ from ragas.metrics.base import (
     MetricWithLLM,
     SingleTurnMetric,
     ensembler,
+    MetricWithEmbeddings,
 )
 from ragas.prompt import PydanticPrompt
 from ragas.run_config import RunConfig
@@ -251,6 +253,59 @@ class NonLLMContextRecall(SingleTurnMetric):
         numerator = sum(verdict_list)
         score = numerator / denom if denom > 0 else np.nan
         return score
+
+
+@dataclass
+class EmbeddingContextRecall(MetricWithEmbeddings, SingleTurnMetric):
+    """
+    Computes context recall using cosine similarity between context embeddings.
+    Expects reference_contexts as a list of (embedding, embedding) tuples and
+    retrieved_contexts as a list of text strings (not embeddings).
+    """
+
+    name: str = "embedding_context_recall"
+    _required_columns: t.Dict[MetricType, t.Set[str]] = field(
+        default_factory=lambda: {
+            MetricType.SINGLE_TURN: {
+                "retrieved_contexts",  # list of text
+                "reference_contexts",  # list of (embedding, embedding)
+            }
+        }
+    )
+    output_type: MetricOutputType = MetricOutputType.CONTINUOUS
+
+    async def _single_turn_ascore(self, sample: SingleTurnSample, callbacks) -> float:
+        retrieved_contexts = sample.retrieved_contexts  # list of text
+        reference_contexts = sample.reference_contexts  # list of (embedding, embedding)
+        assert retrieved_contexts is not None and reference_contexts is not None
+
+        assert (
+            self.embeddings is not None
+        ), "Embeddings model must be set for EmbeddingContextRecall."
+        # embed retrieved_contexts
+        retrieved_embeddings = await self.embeddings.embed_texts(retrieved_contexts)
+
+        scores = []
+        for content_embs, summary_embs in reference_contexts:
+            content_embs = np.array(content_embs)
+            summary_embs = np.array(summary_embs) if summary_embs is not None else None
+
+            def max_cosine(target_embs):
+                if target_embs is None or not len(target_embs):
+                    return 0.0
+                sims = []
+                for retrieved_emb in retrieved_embeddings:
+                    sim = 1 - cosine(target_embs, retrieved_emb)
+                    sims.append(sim)
+                return max(sims) if sims else 0.0
+
+            max_vs_content = max_cosine(content_embs)
+            max_vs_summary = (
+                max_cosine(summary_embs) if summary_embs is not None else 0.0
+            )
+            scores.append(max(max_vs_content, max_vs_summary))
+
+        return float(np.mean(scores)) if scores else float("nan")
 
 
 context_recall = ContextRecall()
