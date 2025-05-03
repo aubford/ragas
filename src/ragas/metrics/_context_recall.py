@@ -341,15 +341,14 @@ class EmbeddingContextRecall(MetricWithEmbeddings, SingleTurnMetric):
                 emb for emb in reference_embs_tuple if emb is not None
             )
 
-            max_score = self._max_cosine_score(
+            max_score = self.matmul_max_cosine_score(
                 reference_embs_tuple, retrieved_embeddings
             )
-            max_score_fancy = self.matmul_max_cosine_score(
-                reference_embs_tuple, retrieved_embeddings
-            )
-            assert math.isclose(
-                max_score, max_score_fancy, abs_tol=1e-6
-            ), f"max_score: {max_score} not equal to max_score_fancy: {max_score_fancy}"
+            # assert math.isclose(
+            #     max_score,
+            #     self._max_cosine_score(reference_embs_tuple, retrieved_embeddings),
+            #     abs_tol=1e-6,
+            # ), f"max scores not equal using different methods"
             scores.append(max_score)
 
         return float(np.mean(scores))

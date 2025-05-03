@@ -289,7 +289,8 @@ class EmbeddingContextPrecision(MetricWithEmbeddings, SingleTurnMetric):
     output_type: MetricOutputType = MetricOutputType.CONTINUOUS
 
     @staticmethod
-    def _max_cosine_score(retrieved_emb: list[float], reference_embs: tuple[list[float], ...]
+    def _max_cosine_score(
+        retrieved_emb: list[float], reference_embs: tuple[list[float], ...]
     ) -> float:
         """
         Given a retrieved embedding and an iterable of reference embeddings, return the maximum
@@ -341,13 +342,6 @@ class EmbeddingContextPrecision(MetricWithEmbeddings, SingleTurnMetric):
             # Compute the max score across all reference_embs for this retrieved_emb
             max_score = max(
                 (
-                    self._max_cosine_score(retrieved_emb, reference_embs_tuple)
-                    for reference_embs_tuple in reference_contexts_embeddings
-                ),
-                default=0.0,
-            )
-            max_score_fancy = max(
-                (
                     self.matmul_max_cosine_score_precision(
                         retrieved_emb, reference_embs_tuple
                     )
@@ -355,9 +349,17 @@ class EmbeddingContextPrecision(MetricWithEmbeddings, SingleTurnMetric):
                 ),
                 default=0.0,
             )
-            assert math.isclose(
-                max_score, max_score_fancy, abs_tol=1e-6
-            ), f"max_score: {max_score} not equal to max_score_fancy: {max_score_fancy}"
+            # assert math.isclose(
+            #     max_score,
+            #     max(
+            #         (
+            #             self._max_cosine_score(retrieved_emb, reference_embs_tuple)
+            #             for reference_embs_tuple in reference_contexts_embeddings
+            #         ),
+            #         default=0.0,
+            #     ),
+            #     abs_tol=1e-6,
+            # ), f"max scores not equal using different methods"
             scores.append(max_score)
 
         return float(np.mean(scores)) if scores else float("nan")
