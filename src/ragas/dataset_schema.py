@@ -74,8 +74,10 @@ class SingleTurnSample(BaseSample):
         The input query from the user.
     retrieved_contexts : Optional[List[str]]
         List of contexts retrieved for the query.
-    reference_contexts : Optional[List[str]]
+    reference_contexts : Optional[List[Tuple[Array[float], Array[float]]]]
         List of reference contexts for the query.
+    reference_contexts_embeddings : Optional[List[Tuple[Any, Any]]]
+        List of reference context embeddings for the query.
     response : Optional[str]
         The generated response for the query.
     multi_responses : Optional[List[str]]
@@ -89,7 +91,8 @@ class SingleTurnSample(BaseSample):
     id: t.Optional[str | int] = None
     user_input: t.Optional[str] = None
     retrieved_contexts: t.Optional[t.List[str]] = None
-    reference_contexts: t.Optional[t.List[tuple[str,str]]] = None
+    reference_contexts: t.Optional[t.List[tuple[str, str]]] = None
+    reference_contexts_embeddings: t.Optional[t.List[tuple]] = None
     response: t.Optional[str] = None
     multi_responses: t.Optional[t.List[str]] = None
     reference: t.Optional[str] = None

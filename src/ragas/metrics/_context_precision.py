@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from pydantic import BaseModel, Field
+from scipy.spatial.distance import cosine
+import math
 
 from ragas.dataset_schema import SingleTurnSample
 from ragas.metrics._string import NonLLMStringSimilarity
@@ -15,6 +17,7 @@ from ragas.metrics.base import (
     MetricWithLLM,
     SingleTurnMetric,
     ensembler,
+    MetricWithEmbeddings,
 )
 from ragas.prompt import PydanticPrompt
 from ragas.run_config import RunConfig
@@ -233,7 +236,7 @@ class NonLLMContextPrecisionWithReference(SingleTurnMetric):
             max_scores = []
             for ref, summary in reference_contexts:
                 assert ref, "reference is empty"
-                
+
                 max_vs_ref = await self.distance_measure.single_turn_ascore(
                     SingleTurnSample(reference=rc, response=ref), callbacks
                 )
@@ -243,7 +246,7 @@ class NonLLMContextPrecisionWithReference(SingleTurnMetric):
                     )
                 else:
                     max_vs_summary = 0
-                    
+
                 max_scores.append(max(max_vs_ref, max_vs_summary))
             scores.append(max(max_scores))
         return self._calculate_average_precision(scores)
@@ -260,6 +263,104 @@ class NonLLMContextPrecisionWithReference(SingleTurnMetric):
         )
         score = numerator / denominator
         return score
+
+
+@dataclass
+class EmbeddingContextPrecision(MetricWithEmbeddings, SingleTurnMetric):
+    """
+    Computes context precision using cosine similarity between context embeddings.
+    Expects reference_contexts_embeddings as a list of (embedding for main content, embedding for summary) tuples and
+    retrieved_contexts as a list of text strings to be embedded. Since it is cumbersome to try to define the exact
+    correct set of embeddings for each testset sample, using the cluster of knowledge graph nodes used to generate the
+    sample is the only viable option for a small project like this. Measuring whether retrieved context nodes match
+    the cluster exactly is not a good measure of success, however. Comparing using embeddings and a continuous similarity
+    metric is a much better approximation of the target semantic space.
+    """
+
+    name: str = "embedding_context_precision"
+    _required_columns: t.Dict[MetricType, t.Set[str]] = field(
+        default_factory=lambda: {
+            MetricType.SINGLE_TURN: {
+                "retrieved_contexts",  # list of text
+                "reference_contexts_embeddings",  # list of (embedding, embedding, embedding)
+            }
+        }
+    )
+    output_type: MetricOutputType = MetricOutputType.CONTINUOUS
+
+    @staticmethod
+    def _max_cosine_score(retrieved_emb: list[float], reference_embs: tuple[list[float], ...]
+    ) -> float:
+        """
+        Given a retrieved embedding and an iterable of reference embeddings, return the maximum
+        cosine similarity score.
+        """
+        retrieved_emb_np = np.array(retrieved_emb)
+
+        def cosine_sim(target_embs: list[float]) -> float:
+            target_embs_np = np.array(target_embs)
+            return 1 - cosine(target_embs_np, retrieved_emb_np)
+
+        return max(
+            (cosine_sim(emb) for emb in reference_embs),
+            default=0.0,
+        )
+
+    @staticmethod
+    def matmul_max_cosine_score_precision(
+        retrieved_emb: list[float],
+        reference_embs: tuple[list[float], ...],
+    ) -> float:
+        """
+        Given a single retrieved embedding and a tuple of reference embeddings, return the maximum
+        cosine similarity score between the retrieved embedding and any reference embedding.
+        """
+        retrieved_emb_np = np.array(retrieved_emb)
+        ref_arr = np.array(reference_embs)
+        # Normalize
+        norm_ref = ref_arr / np.linalg.norm(ref_arr, axis=1, keepdims=True)
+        norm_ret = retrieved_emb_np / np.linalg.norm(retrieved_emb_np)
+        sim_scores = np.dot(norm_ref, norm_ret)
+        return np.max(sim_scores)
+
+    async def _single_turn_ascore(self, sample: SingleTurnSample, callbacks) -> float:
+        retrieved_contexts = sample.retrieved_contexts  # list of text
+        reference_contexts_embeddings = sample.reference_contexts_embeddings
+        assert (
+            retrieved_contexts is not None and reference_contexts_embeddings is not None
+        )
+
+        assert (
+            self.embeddings is not None
+        ), "Embeddings model must be set for EmbeddingContextPrecision."
+        # embed retrieved_contexts
+        retrieved_embeddings = await self.embeddings.embed_texts(retrieved_contexts)
+
+        scores = []
+        for retrieved_emb in retrieved_embeddings:
+            # Compute the max score across all reference_embs for this retrieved_emb
+            max_score = max(
+                (
+                    self._max_cosine_score(retrieved_emb, reference_embs_tuple)
+                    for reference_embs_tuple in reference_contexts_embeddings
+                ),
+                default=0.0,
+            )
+            max_score_fancy = max(
+                (
+                    self.matmul_max_cosine_score_precision(
+                        retrieved_emb, reference_embs_tuple
+                    )
+                    for reference_embs_tuple in reference_contexts_embeddings
+                ),
+                default=0.0,
+            )
+            assert math.isclose(
+                max_score, max_score_fancy, abs_tol=1e-6
+            ), f"max_score: {max_score} not equal to max_score_fancy: {max_score_fancy}"
+            scores.append(max_score)
+
+        return float(np.mean(scores)) if scores else float("nan")
 
 
 @dataclass

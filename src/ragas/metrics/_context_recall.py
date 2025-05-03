@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import typing as t
 from dataclasses import dataclass, field
 
@@ -116,7 +117,8 @@ class LLMContextRecall(MetricWithLLM, SingleTurnMetric):
     )
     max_retries: int = 1
 
-    def _compute_score(self, responses: t.List[ContextRecallClassification]) -> float:
+    @staticmethod
+    def _compute_score(responses: t.List[ContextRecallClassification]) -> float:
         response = [1 if item.attributed else 0 for item in responses]
         denom = len(response)
         numerator = sum(response)
@@ -248,7 +250,8 @@ class NonLLMContextRecall(SingleTurnMetric):
     async def _ascore(self, row: t.Dict, callbacks: Callbacks) -> float:
         return await self._single_turn_ascore(SingleTurnSample(**row), callbacks)
 
-    def _compute_score(self, verdict_list: t.List[float]) -> float:
+    @staticmethod
+    def _compute_score(verdict_list: t.List[float]) -> float:
         denom = len(verdict_list)
         numerator = sum(verdict_list)
         score = numerator / denom if denom > 0 else np.nan
@@ -259,8 +262,12 @@ class NonLLMContextRecall(SingleTurnMetric):
 class EmbeddingContextRecall(MetricWithEmbeddings, SingleTurnMetric):
     """
     Computes context recall using cosine similarity between context embeddings.
-    Expects reference_contexts as a list of (embedding, embedding) tuples and
-    retrieved_contexts as a list of text strings (not embeddings).
+    Expects reference_contexts_embeddings as a list of (embedding for main content, embedding for summary) tuples and
+    retrieved_contexts as a list of text strings to be embedded. Since it is cumbersome to try to define the exact
+    correct set of embeddings for each testset sample, using the cluster of knowledge graph nodes used to generate the
+    sample is the only viable option for a small project like this. Measuring whether retrieved context nodes match
+    the cluster exactly is not a good measure of success, however. Comparing using embeddings and a continuous similarity
+    metric is a much better approximation of the target semantic space.
     """
 
     name: str = "embedding_context_recall"
@@ -268,44 +275,84 @@ class EmbeddingContextRecall(MetricWithEmbeddings, SingleTurnMetric):
         default_factory=lambda: {
             MetricType.SINGLE_TURN: {
                 "retrieved_contexts",  # list of text
-                "reference_contexts",  # list of (embedding, embedding)
+                "reference_contexts_embeddings",  # list of embedding tuples
             }
         }
     )
     output_type: MetricOutputType = MetricOutputType.CONTINUOUS
 
-    async def _single_turn_ascore(self, sample: SingleTurnSample, callbacks) -> float:
-        retrieved_contexts = sample.retrieved_contexts  # list of text
-        reference_contexts = sample.reference_contexts  # list of (embedding, embedding)
-        assert retrieved_contexts is not None and reference_contexts is not None
+    @staticmethod
+    def cosine_sim(ref_emb: list[float], ret_emb: list[float]) -> float:
+        return 1 - cosine(np.array(ref_emb), np.array(ret_emb))
 
+    def _max_cosine_score(
+        self,
+        reference_embs_tuple: tuple[list[float], ...],
+        retrieved_embeddings: list[list[float]],
+    ) -> float:
+        """
+        Given a tuple of reference embeddings and a list of retrieved embeddings, return the maximum
+        cosine similarity score for any element in the tuple against any retrieved embedding.
+        """
+        # inner: find the max similarity for each reference embedding type for a document
+        # outer: find the max similarity for the document
+        return max(
+            max(self.cosine_sim(ref_emb, ret_emb) for ret_emb in retrieved_embeddings)
+            for ref_emb in reference_embs_tuple
+            if ref_emb is not None
+        )
+
+    @staticmethod
+    def matmul_max_cosine_score(
+        reference_embs_tuple: tuple[list[float], ...],
+        retrieved_embeddings: list[list[float]],
+    ) -> float:
+        """
+        Given a tuple of reference embeddings and a list of retrieved embeddings, return the maximum
+        cosine similarity score for any element in the tuple against any retrieved embedding.
+        """
+        ref_arr = np.array(reference_embs_tuple)
+        ret_arr = np.array(retrieved_embeddings)
+        # Compute cosine similarity matrix
+        norm_ref = ref_arr / np.linalg.norm(ref_arr, axis=1, keepdims=True)
+        norm_ret = ret_arr / np.linalg.norm(ret_arr, axis=1, keepdims=True)
+        sim_matrix = np.dot(norm_ref, norm_ret.T)
+        return np.max(sim_matrix)
+
+    async def _single_turn_ascore(
+        self, sample: SingleTurnSample, callbacks: t.Any
+    ) -> float:
+        retrieved_contexts = sample.retrieved_contexts
+        reference_contexts_embeddings = sample.reference_contexts_embeddings
+        assert (
+            retrieved_contexts is not None and reference_contexts_embeddings is not None
+        ), "Retrieved contexts or reference contexts embeddings are empty"
+
+        # embed retrieved contexts
         assert (
             self.embeddings is not None
         ), "Embeddings model must be set for EmbeddingContextRecall."
-        # embed retrieved_contexts
         retrieved_embeddings = await self.embeddings.embed_texts(retrieved_contexts)
 
         scores = []
-        for content_embs, summary_embs in reference_contexts:
-            content_embs = np.array(content_embs)
-            summary_embs = np.array(summary_embs) if summary_embs is not None else None
-
-            def max_cosine(target_embs):
-                if target_embs is None or not len(target_embs):
-                    return 0.0
-                sims = []
-                for retrieved_emb in retrieved_embeddings:
-                    sim = 1 - cosine(target_embs, retrieved_emb)
-                    sims.append(sim)
-                return max(sims) if sims else 0.0
-
-            max_vs_content = max_cosine(content_embs)
-            max_vs_summary = (
-                max_cosine(summary_embs) if summary_embs is not None else 0.0
+        for reference_embs_tuple in reference_contexts_embeddings:
+            # Filter out None values from the reference embeddings tuple
+            reference_embs_tuple = tuple(
+                emb for emb in reference_embs_tuple if emb is not None
             )
-            scores.append(max(max_vs_content, max_vs_summary))
 
-        return float(np.mean(scores)) if scores else float("nan")
+            max_score = self._max_cosine_score(
+                reference_embs_tuple, retrieved_embeddings
+            )
+            max_score_fancy = self.matmul_max_cosine_score(
+                reference_embs_tuple, retrieved_embeddings
+            )
+            assert math.isclose(
+                max_score, max_score_fancy, abs_tol=1e-6
+            ), f"max_score: {max_score} not equal to max_score_fancy: {max_score_fancy}"
+            scores.append(max_score)
+
+        return float(np.mean(scores))
 
 
 context_recall = ContextRecall()

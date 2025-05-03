@@ -27,12 +27,14 @@ from ragas.metrics._context_precision import (
     LLMContextPrecisionWithReference,
     NonLLMContextPrecisionWithReference,
     context_precision,
+    EmbeddingContextPrecision,
 )
 from ragas.metrics._context_recall import (
     ContextRecall,
     LLMContextRecall,
     NonLLMContextRecall,
     context_recall,
+    EmbeddingContextRecall,
 )
 from ragas.metrics._datacompy_score import DataCompyScore
 from ragas.metrics._domain_specific_rubrics import RubricsScore
@@ -144,4 +146,6 @@ __all__ = [
     "multimodal_faithness",
     "MultiModalRelevance",
     "multimodal_relevance",
+    "EmbeddingContextPrecision",
+    "EmbeddingContextRecall",
 ]

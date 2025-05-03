@@ -353,7 +353,7 @@ class LlamaIndexEmbeddingsWrapper(BaseRagasEmbeddings):
 
 
 def embedding_factory(
-    model: str = "text-embedding-ada-002", run_config: t.Optional[RunConfig] = None
+    model: str = "text-embedding-3-large", run_config: t.Optional[RunConfig] = None
 ) -> BaseRagasEmbeddings:
     """
     Create and return a BaseRagasEmbeddings instance. Used for default embeddings
@@ -365,7 +365,7 @@ def embedding_factory(
     Parameters
     ----------
     model : str, optional
-        The name of the OpenAI embedding model to use, by default "text-embedding-ada-002".
+        The name of the OpenAI embedding model to use, by default "text-embedding-3-large".
     run_config : RunConfig, optional
         Configuration for the run, by default None.
 
