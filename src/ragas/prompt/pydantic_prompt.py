@@ -9,7 +9,12 @@ import typing as t
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.prompt_values import StringPromptValue as PromptValue
+from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage
+from langchain_core.prompt_values import (
+    PromptValue,
+    StringPromptValue,
+    ChatPromptValue,
+)
 from pydantic import BaseModel
 
 from ragas._version import __version__
@@ -141,6 +146,25 @@ class PydanticPrompt(BasePrompt, t.Generic[InputModel, OutputModel]):
         )
         return output_single[0]
 
+    def to_messages(self, data: InputModel) -> list[BaseMessage]:
+        assert data is not None, "data is required"
+
+        example_messages = []
+        for example in self.examples:
+            input_data, output_data = example
+            example_messages.append(
+                HumanMessage(content=input_data.model_dump_json(indent=4))
+            )
+            example_messages.append(
+                AIMessage(content=output_data.model_dump_json(indent=4))
+            )
+
+        return [
+            SystemMessage(content=self.instruction),
+            *example_messages,
+            HumanMessage(content=data.model_dump_json(indent=4)),
+        ]
+
     async def generate_multiple(
         self,
         llm: BaseRagasLLM,
@@ -195,7 +219,11 @@ class PydanticPrompt(BasePrompt, t.Generic[InputModel, OutputModel]):
         else:
             prompt_cb = callbacks
 
-        prompt_value = PromptValue(text=self.to_string(processed_data))
+        prompt_value = (
+            ChatPromptValue(messages=self.to_messages(processed_data))
+            if self.examples
+            else StringPromptValue(text=self.to_string(processed_data))
+        )
         resp = await llm.generate(
             prompt_value,
             n=n,

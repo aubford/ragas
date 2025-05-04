@@ -4,10 +4,12 @@ import logging
 import typing as t
 from dataclasses import dataclass, field
 from enum import Enum
+import asyncio
 
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, Field
+import pandas as pd
 
 from ragas.metrics._faithfulness import NLIStatementInput, NLIStatementPrompt
 from ragas.metrics.base import (
@@ -24,6 +26,8 @@ if t.TYPE_CHECKING:
 
     from ragas.dataset_schema import SingleTurnSample
 
+TESTSET_PATH = "/Users/aubrey/workspace/langchain-pepwave_and_ragas/langchain-pepwave/evals/testsets/testset-200_main_testset_25-04-23/generated_testset.json"
+background_tasks = []
 
 logger = logging.getLogger(__name__)
 
@@ -154,9 +158,16 @@ claim_decomposition_examples[DecompositionType.HIGH_ATOMICITY_HIGH_COVERAGE].app
 class ClaimDecompositionPrompt(
     PydanticPrompt[ClaimDecompositionInput, ClaimDecompositionOutput]
 ):
-    instruction = """Decompose each of the input sentences into one or more standalone statements. Each statement should be a standalone claim that can be independently verified. Follow the level of atomicity and coverage as shown in the examples."""
+    instruction = """Given a response, decompose each of the input sentences into one or more standalone statements. Each statement should be a standalone claim that can be independently verified. Follow the level of atomicity and coverage demonstrated in the following conversation."""
     input_model = ClaimDecompositionInput
     output_model = ClaimDecompositionOutput
+
+
+def get_testset() -> pd.DataFrame:
+    testset_df = pd.read_json(TESTSET_PATH)
+    if not "decomposed_answer" in testset_df.columns:
+        testset_df["decomposed_answer"] = None
+    return testset_df
 
 
 @dataclass
@@ -193,6 +204,7 @@ class FactualCorrectness(MetricWithLLM, SingleTurnMetric):
     claim_decomposition_prompt: PydanticPrompt = ClaimDecompositionPrompt()
     nli_prompt: PydanticPrompt = NLIStatementPrompt()
     language: str = "english"
+    testset_df = get_testset()
 
     def __post_init__(self):
         value = f"{self.atomicity}_atomicity_{self.coverage}_coverage"
@@ -222,6 +234,37 @@ class FactualCorrectness(MetricWithLLM, SingleTurnMetric):
         )
         return result.claims
 
+    async def retrieve_or_decompose_claims(
+        self, reference: str, callbacks: Callbacks
+    ) -> t.List[str]:
+        """
+        Check if we have a decomposed answer for the reference in the testset and if so,
+        return it. Otherwise, ask LLM to decompose the claims and save the result
+        to the testset.
+        """
+        testset = self.testset_df
+        idx_set = testset.index[testset["answer"] == reference]
+        assert len(idx_set) == 1, "Expected exactly one row for answer == reference"
+        i = idx_set[0]
+        # If we have a decomposed answer for the reference, return it.
+        claims = testset.at[i, "decomposed_answer"]
+        if claims:
+            assert isinstance(claims, list), "Expected a list of claims"
+            return claims
+        # Otherwise, ask LLM to decompose the claims and save the result to the testset.
+        claims = await self.decompose_claims(reference, callbacks)
+        testset.at[i, "decomposed_answer"] = claims
+        asyncio.create_task(
+            asyncio.to_thread(
+                testset.to_json,
+                TESTSET_PATH,
+                orient="records",
+                indent=2,
+                force_ascii=False,
+            )
+        )
+        return claims
+
     async def verify_claims(
         self, premise: str, hypothesis_list: t.List[str], callbacks: Callbacks
     ) -> NDArray[np.bool_]:
@@ -247,31 +290,39 @@ class FactualCorrectness(MetricWithLLM, SingleTurnMetric):
         assert reference is not None, "Reference is not set"
         assert response is not None, "Response is not set"
 
-        response_claims = await self.decompose_claims(response, callbacks)
-        reference_response = await self.verify_claims(
-            premise=reference, hypothesis_list=response_claims, callbacks=callbacks
-        )
-
-        if self.mode != "precision":
-            reference_claims = await self.decompose_claims(reference, callbacks)
-            response_reference = await self.verify_claims(
-                premise=response, hypothesis_list=reference_claims, callbacks=callbacks
-            )
-        else:
-            response_reference = np.array([], dtype=bool)
-
-        tp = sum(reference_response)
-        fp = sum(~reference_response)
-        if self.mode != "precision":
-            fn = sum(~response_reference)
-        else:
-            fn = 0
-
         if self.mode == "precision":
+            response_claims = await self.decompose_claims(response, callbacks)
+            response_claims_in_reference = await self.verify_claims(
+                premise=reference, hypothesis_list=response_claims, callbacks=callbacks
+            )
+            tp = sum(response_claims_in_reference)
+            fp = sum(~response_claims_in_reference)
             score = tp / (tp + fp + 1e-8)
         elif self.mode == "recall":
+            reference_claims = await self.retrieve_or_decompose_claims(
+                reference, callbacks
+            )
+            reference_claims_in_response = await self.verify_claims(
+                premise=response, hypothesis_list=reference_claims, callbacks=callbacks
+            )
+            tp = sum(reference_claims_in_response)
+            fn = sum(~reference_claims_in_response)
             score = tp / (tp + fn + 1e-8)
         else:
+            # F1 or other modes: need both precision and recall
+            response_claims = await self.decompose_claims(response, callbacks)
+            response_claims_in_reference = await self.verify_claims(
+                premise=reference, hypothesis_list=response_claims, callbacks=callbacks
+            )
+            reference_claims = await self.retrieve_or_decompose_claims(
+                reference, callbacks
+            )
+            reference_claims_in_response = await self.verify_claims(
+                premise=response, hypothesis_list=reference_claims, callbacks=callbacks
+            )
+            tp = sum(response_claims_in_reference)
+            fp = sum(~response_claims_in_reference)
+            fn = sum(~reference_claims_in_response)
             score = fbeta_score(tp, fp, fn, self.beta)
 
         return np.round(score, 2)
