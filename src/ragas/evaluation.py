@@ -303,7 +303,13 @@ def evaluate(
                     key = f"{m.name}(mode={m.mode})"
                 else:
                     key = m.name
-                s[key] = results[len(metrics) * i + j]
+                result = results[len(metrics) * i + j]
+                if isinstance(result, tuple):
+                    s[key] = result[0]
+                    assert isinstance(result[1], list)
+                    dataset[i].reference_answer_statements_recall = result[1]  # type: ignore
+                else:
+                    s[key] = result
             scores.append(s)
             # close the row chain
             row_rm, row_group_cm = row_run_managers[i]

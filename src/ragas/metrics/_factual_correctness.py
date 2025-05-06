@@ -10,8 +10,11 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, Field
 import pandas as pd
-
-from ragas.metrics._faithfulness import NLIStatementInput, NLIStatementPrompt
+from ragas.metrics._faithfulness import (
+    NLIStatementOutput,
+    NLIStatementInput,
+    NLIStatementPrompt,
+)
 from ragas.metrics.base import (
     MetricOutputType,
     MetricType,
@@ -281,9 +284,30 @@ class FactualCorrectness(MetricWithLLM, SingleTurnMetric):
             claim_verifications = np.array([], dtype=bool)
         return claim_verifications
 
+    async def verify_claims_recall(
+        self,
+        premise: str,
+        hypothesis_list: t.List[str],
+        callbacks: Callbacks,
+    ) -> t.Tuple[NDArray[np.bool_], t.List[NLIStatementOutput]]:
+        assert self.llm is not None, "LLM must be set"
+        prompt_input = NLIStatementInput(context=premise, statements=hypothesis_list)
+        response = await self.nli_prompt.generate(
+            data=prompt_input, llm=self.llm, callbacks=callbacks
+        )
+        if response.statements:
+            claim_verifications = np.array(
+                [bool(result.verdict) for result in response.statements]
+            )
+        else:
+            print("No statements in response")
+            return np.array([], dtype=bool), []
+
+        return claim_verifications, response.statements
+
     async def _single_turn_ascore(
         self, sample: SingleTurnSample, callbacks: Callbacks
-    ) -> float:
+    ) -> float | t.Tuple[float, t.List[NLIStatementOutput]]:
         reference = sample.reference
         response = sample.response
         assert self.llm is not None, "LLM must be set"
@@ -302,12 +326,17 @@ class FactualCorrectness(MetricWithLLM, SingleTurnMetric):
             reference_claims = await self.retrieve_or_decompose_claims(
                 reference, callbacks
             )
-            reference_claims_in_response = await self.verify_claims(
-                premise=response, hypothesis_list=reference_claims, callbacks=callbacks
+            reference_claims_in_response, statement_verdicts = (
+                await self.verify_claims_recall(
+                    premise=response,
+                    hypothesis_list=reference_claims,
+                    callbacks=callbacks,
+                )
             )
             tp = sum(reference_claims_in_response)
             fn = sum(~reference_claims_in_response)
             score = tp / (tp + fn + 1e-8)
+            return (score, statement_verdicts)
         else:
             # F1 or other modes: need both precision and recall
             response_claims = await self.decompose_claims(response, callbacks)
@@ -327,5 +356,7 @@ class FactualCorrectness(MetricWithLLM, SingleTurnMetric):
 
         return np.round(score, 2)
 
-    async def _ascore(self, row: t.Dict, callbacks: Callbacks) -> float:
+    async def _ascore(
+        self, row: t.Dict, callbacks: Callbacks
+    ) -> float | t.Tuple[float, t.List[NLIStatementOutput]]:
         return await self._single_turn_ascore(SingleTurnSample(**row), callbacks)

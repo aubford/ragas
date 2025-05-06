@@ -93,6 +93,7 @@ class SingleTurnSample(BaseSample):
     retrieved_contexts: t.Optional[t.List[str]] = None
     reference_contexts: t.Optional[t.List[tuple[str, str]]] = None
     reference_contexts_embeddings: t.Optional[t.List[tuple]] = None
+    reference_answer_statements_recall: t.Optional[t.Any] = None
     response: t.Optional[str] = None
     multi_responses: t.Optional[t.List[str]] = None
     reference: t.Optional[str] = None
