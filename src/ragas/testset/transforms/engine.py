@@ -87,6 +87,7 @@ def apply_transforms(
     """
     Apply a list of transformations to a knowledge graph in place,
     using ThreadPoolExecutor for parallelism without pickling issues.
+    Numpy and IO ops will run in parallel.
     """
     # apply nest_asyncio to fix the event loop issue in jupyter
     apply_nest_asyncio()
@@ -116,18 +117,25 @@ def apply_transforms(
             local_kg = KnowledgeGraph(nodes=kg.nodes.copy(), relationships=[])
 
             # Run the coroutines for this transform on the local copy
-            asyncio.run(
-                run_coroutines(
-                    transform.generate_execution_plan(local_kg),
-                    get_desc(transform),
-                    1,  # Use a single worker within each thread
+            # TODO: Untested refactor
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(
+                    run_coroutines(
+                        transform.generate_execution_plan(local_kg),
+                        get_desc(transform),
+                        1,  # Use a single worker within each thread
+                    )
                 )
-            )
+            finally:
+                loop.close()
 
             logger.info(f"Completed transform: {transform.__class__.__name__}")
             return local_kg.relationships
 
         # Use ThreadPoolExecutor to run transforms in parallel
+        # Can run the numpy operations in parallel
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [
                 executor.submit(apply_transform, transform)

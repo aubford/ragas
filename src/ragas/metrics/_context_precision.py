@@ -222,14 +222,15 @@ class NonLLMContextPrecisionWithReference(SingleTurnMetric):
         self, sample: SingleTurnSample, callbacks: Callbacks
     ) -> float:
         """For each retrieved context, find the best matching reference context. Try both main content
-        and summary for each reference document. Return the similarity score of the best match.
-        Don't collapse to a binary score because we aren't looking for exact doc match but overall
-        amount of matching information.
+        and summary for each reference document. This moves us away from attempting to match exact documents 
+        and more in favor of matching semantics in general. Return the similarity score of the best match. 
+        Don't collapse to a binary score because we aren't looking for exact doc match but overall amount of 
+        matching semantics.
         """
         retrieved_contexts = sample.retrieved_contexts
         reference_contexts = sample.reference_contexts
-        assert retrieved_contexts is not None, "retrieved_contexts is empty"
-        assert reference_contexts is not None, "reference_contexts is empty"
+        assert retrieved_contexts is not None, "retrieved_contexts is None"
+        assert reference_contexts is not None, "reference_contexts is None"
 
         scores = []
         for rc in retrieved_contexts:
@@ -270,8 +271,8 @@ class EmbeddingContextPrecision(MetricWithEmbeddings, SingleTurnMetric):
     """
     Computes context precision using cosine similarity between context embeddings.
     Expects reference_contexts_embeddings as a list of (embedding for main content, embedding for summary) tuples and
-    retrieved_contexts as a list of text strings to be embedded. Since it is cumbersome to try to define the exact
-    correct set of embeddings for each testset sample, using the cluster of knowledge graph nodes used to generate the
+    retrieved_contexts as a list of text strings to be embedded. Since it is cumbersome to try to define the entire
+    viable set of embeddings for each testset sample, using the cluster of knowledge graph nodes used to generate the
     sample is the only viable option for a small project like this. Measuring whether retrieved context nodes match
     the cluster exactly is not a good measure of success, however. Comparing using embeddings and a continuous similarity
     metric is a much better approximation of the target semantic space.
